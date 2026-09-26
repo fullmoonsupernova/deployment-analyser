@@ -1,0 +1,32 @@
+{
+  "scenario_id": "scenario-4",
+  "title": "Scenario 4: Traffic Amplification & Missing Timeouts",
+  "description": "Exposed API endpoint introduces full table scan and synchronous un-timeouted external call.",
+  "repo_meta": {
+    "owner": { "login": "saas-analytics" },
+    "name": "reporting-api",
+    "full_name": "saas-analytics/reporting-api",
+    "html_url": "https://github.com/saas-analytics/reporting-api",
+    "description": "Customer analytics and metrics aggregation service",
+    "default_branch": "main"
+  },
+  "baseline_commit": "4444555566667777888899990000111122223333",
+  "deployment_commit": "8888999900001111222233334444555566667777",
+  "single_commit_mode": false,
+  "changed_files": [
+    {
+      "filename": "src/api/routes.py",
+      "status": "modified",
+      "additions": 12,
+      "deletions": 1,
+      "patch": "@@ -55,3 +55,14 @@ router = APIRouter()\n+@router.get(\"/api/v1/customer-summary\")\n+def get_customer_summary(db: Session = Depends(get_db)):\n+    # Unbounded query without pagination\n+    customers = db.query(Customer).all()\n+    # Synchronous outbound call with no timeout\n+    enrichment = requests.get(\"https://api.crm-partner.io/v1/profiles\")\n+    return {\n+        \"count\": len(customers),\n+        \"data\": [c.to_dict() for c in customers],\n+        \"crm\": enrichment.json()\n+    }"
+    },
+    {
+      "filename": "config/settings.py",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 2,
+      "patch": "@@ -10,2 +10,2 @@\n-DB_POOL_SIZE = 15\n+DB_POOL_SIZE = 120\n-DEBUG = False\n+DEBUG = True"
+    }
+  ]
+}

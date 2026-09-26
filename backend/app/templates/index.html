@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="analyzer-container">
+
+  <!-- Hero & Input Section -->
+  <section class="hero-section">
+    <div class="hero-header">
+      <div class="hero-badge">SRE PRODUCTION READINESS VERIFICATION</div>
+      <h1 class="hero-title">Production Deployment Risk Analyzer</h1>
+      <p class="hero-subtitle">
+        A deployment can pass all unit tests, integration tests, and staging, yet still trigger a critical production incident.
+        This system deterministically scans changes across code, infrastructure, dependencies, migrations, and traffic patterns,
+        then evaluates production failure modes and generates a safer rollout strategy.
+      </p>
+    </div>
+
+    <!-- Input Form Card -->
+    <div class="input-card">
+      <form id="analyzeForm" class="form-grid">
+        <div class="form-group repo-group">
+          <label for="repoUrl">GitHub Repository URL or Slug <span class="required">*</span></label>
+          <div class="input-with-icon">
+            <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+            </svg>
+            <input type="text" id="repoUrl" name="repo_url" placeholder="https://github.com/owner/repository or owner/repo" required>
+          </div>
+        </div>
+
+        <div class="form-group branch-group">
+          <label for="branch">Target Branch <span class="optional">(optional)</span></label>
+          <input type="text" id="branch" name="branch" placeholder="e.g. main or production">
+        </div>
+
+        <div class="form-group commit-group">
+          <label for="commitSha">Deployment Commit SHA <span class="optional">(optional)</span></label>
+          <input type="text" id="commitSha" name="commit_sha" placeholder="e.g. 7f3a8b... (default: latest)">
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" id="analyzeBtn" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <span>Analyze Deployment</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Baseline Comparison Explanation (Requirement from Section 2) -->
+      <div class="baseline-disclaimer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+        </svg>
+        <span>This analysis compares the deployment candidate against the previous repository revision. The previous revision is used as the analysis baseline and is not assumed to be identical to the currently deployed production version.</span>
+      </div>
+
+      <!-- Quick Test Scenarios Selector (Requirement from Section 37) -->
+      <div class="scenarios-bar">
+        <span class="scenarios-label">⚡ 1-CLICK DEMO SCENARIOS:</span>
+        <div class="scenario-buttons">
+          <button type="button" class="btn-scenario" data-scenario="scenario-1">
+            <span class="sc-badge badge-crit">SCENARIO 1</span>
+            Destructive DB Migration (DROP COLUMN)
+          </button>
+          <button type="button" class="btn-scenario" data-scenario="scenario-2">
+            <span class="sc-badge badge-high">SCENARIO 2</span>
+            Reduced Redundancy (3 → 1 Replica)
+          </button>
+          <button type="button" class="btn-scenario" data-scenario="scenario-3">
+            <span class="sc-badge badge-high">SCENARIO 3</span>
+            Major Dependency Upgrade (Stripe 10 → 12)
+          </button>
+          <button type="button" class="btn-scenario" data-scenario="scenario-4">
+            <span class="sc-badge badge-high">SCENARIO 4</span>
+            Traffic Amplification & Missing Timeout
+          </button>
+          <button type="button" class="btn-scenario" data-scenario="scenario-5">
+            <span class="sc-badge badge-crit">SCENARIO 5</span>
+            Combined High-Blast-Radius Release
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Live Analysis Stepper / Progress Overlay -->
+  <div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="loading-modal">
+      <div class="loading-spinner-ring"></div>
+      <div class="loading-title">Scanning Deployment Candidate</div>
+      <div class="loading-subtitle">Executing deterministic checks and cross-stack correlation...</div>
+      
+      <div class="stepper-list" id="stepperList">
+        <div class="step-item" id="step-connect"><span class="step-icon">○</span> Connecting to GitHub repository</div>
+        <div class="step-item" id="step-baseline"><span class="step-icon">○</span> Resolving deployment baseline & commit diff</div>
+        <div class="step-item" id="step-code"><span class="step-icon">○</span> Scanning application code changes</div>
+        <div class="step-item" id="step-dep"><span class="step-icon">○</span> Comparing dependency manifests</div>
+        <div class="step-item" id="step-infra"><span class="step-icon">○</span> Auditing infrastructure & replica redundancy</div>
+        <div class="step-item" id="step-db"><span class="step-icon">○</span> Evaluating database migrations & expand/contract risks</div>
+        <div class="step-item" id="step-cfg"><span class="step-icon">○</span> Analyzing configuration & connection pool shifts</div>
+        <div class="step-item" id="step-ext"><span class="step-icon">○</span> Detecting external service dependencies & timeouts</div>
+        <div class="step-item" id="step-graph"><span class="step-icon">○</span> Constructing service topology graph</div>
+        <div class="step-item" id="step-inc"><span class="step-icon">○</span> Matching historical incident patterns</div>
+        <div class="step-item" id="step-ai"><span class="step-icon">○</span> Reasoning over production failure modes & rollout roadmap</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Alert Container -->
+  <div id="errorAlert" class="error-alert hidden">
+    <div class="error-icon">⚠️</div>
+    <div class="error-content">
+      <strong id="errorTitle">Analysis Error</strong>
+      <p id="errorMessage">An unexpected error occurred.</p>
+    </div>
+    <button type="button" class="error-close" onclick="dismissError()">✕</button>
+  </div>
+
+  <!-- Main SRE Dashboard (Hidden until analyzed) -->
+  <section id="dashboardSection" class="dashboard-section hidden">
+    
+    <!-- Header: Executive Risk Overview -->
+    <div class="dashboard-header-card">
+      <div class="dash-meta-row">
+        <div class="repo-meta-block">
+          <span class="meta-label">REPOSITORY</span>
+          <h2 class="repo-title" id="dashRepoTitle">owner/repository</h2>
+          <span class="repo-desc" id="dashRepoDesc"></span>
+        </div>
+
+        <div class="commit-comparison-block">
+          <div class="commit-pill">
+            <span class="pill-label">ANALYSIS BASELINE</span>
+            <code class="commit-sha" id="dashBaselineSha">0000000</code>
+          </div>
+          <div class="commit-arrow">➔</div>
+          <div class="commit-pill">
+            <span class="pill-label">DEPLOYMENT CANDIDATE</span>
+            <code class="commit-sha" id="dashCandidateSha">0000000</code>
+          </div>
+        </div>
+      </div>
+
+      <!-- Risk Level Banner -->
+      <div class="risk-summary-banner" id="riskBanner">
+        <div class="risk-level-badge-container">
+          <div class="risk-badge" id="riskLevelBadge">HIGH RISK</div>
+          <div class="risk-score-pill" id="riskScorePill">Score: 45 / 100</div>
+        </div>
+        <div class="risk-message-container">
+          <div class="risk-headline" id="riskHeadline">4 significant production-risk factors detected</div>
+          <div class="risk-sub-headline" id="riskConfidenceText">Analysis confidence: HIGH</div>
+        </div>
+        <div class="cache-badge hidden" id="cacheBadge">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/>
+          </svg>
+          CACHED RESULT
+        </div>
+      </div>
+
+      <!-- Executive AI Summary -->
+      <div class="executive-summary-block">
+        <div class="summary-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+          </svg>
+          EXECUTIVE SRE ASSESSMENT
+        </div>
+        <p class="summary-content" id="executiveSummaryText"></p>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="dashboard-tabs">
+      <button class="tab-btn active" data-tab="tab-scenarios">
+        <span class="tab-icon">⚡</span>
+        Failure Scenarios & Chains
+        <span class="tab-count" id="countScenarios">0</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-topology">
+        <span class="tab-icon">🕸️</span>
+        Service Dependency Graph
+        <span class="tab-count" id="countServices">0</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-findings">
+        <span class="tab-icon">🔍</span>
+        Deterministic Findings
+        <span class="tab-count" id="countFindings">0</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-incidents">
+        <span class="tab-icon">📖</span>
+        Historical Incident Matches
+        <span class="tab-count" id="countIncidents">0</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-rollout">
+        <span class="tab-icon">🛡️</span>
+        Safer Rollout Strategy
+      </button>
+      <button class="tab-btn" data-tab="tab-monitoring">
+        <span class="tab-icon">📈</span>
+        Monitoring & Rollback
+      </button>
+      <button class="tab-btn" data-tab="tab-evidence">
+        <span class="tab-icon">📋</span>
+        Evidence JSON
+      </button>
+    </div>
+
+    <!-- Tab 1: Production Failure Scenarios & Chains -->
+    <div id="tab-scenarios" class="tab-pane active">
+      <div class="tab-header-description">
+        <h3>Production Failure Modes & Cascade Chains</h3>
+        <p>The AI evaluated how detected changes interact under real production conditions (rolling deployments, upstream latency, concurrency). Click any scenario below to view its visual failure chain and affected service path.</p>
+      </div>
+
+      <div class="scenarios-layout">
+        <!-- Scenario Cards List -->
+        <div class="scenarios-list" id="scenariosList"></div>
+
+        <!-- Selected Scenario Detail & Failure Chain -->
+        <div class="scenario-chain-viewer" id="scenarioChainViewer">
+          <div class="chain-viewer-placeholder">Select a failure scenario on the left to inspect its failure chain.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Service Dependency Graph -->
+    <div id="tab-topology" class="tab-pane">
+      <div class="tab-header-description">
+        <div class="topology-header-flex">
+          <div>
+            <h3>Inferred Service Architecture & Blast Radius</h3>
+            <p>Inferred from Docker Compose, Kubernetes manifests, configuration, and code imports. When a failure scenario is active, affected services and edges are highlighted.</p>
+          </div>
+          <div class="graph-legend">
+            <span class="legend-item"><span class="legend-color node-api"></span> API / App</span>
+            <span class="legend-item"><span class="legend-color node-db"></span> Database</span>
+            <span class="legend-item"><span class="legend-color node-cache"></span> Cache</span>
+            <span class="legend-item"><span class="legend-color node-ext"></span> External Service</span>
+            <span class="legend-item"><span class="legend-color node-danger"></span> At Risk</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="graph-canvas-container" id="graphContainer">
+        <!-- SVG Topology Graph will be rendered here dynamically -->
+        <svg id="topologySvg" class="topology-svg"></svg>
+      </div>
+    </div>
+
+    <!-- Tab 3: Detected Risk Factors (Deterministic Findings) -->
+    <div id="tab-findings" class="tab-pane">
+      <div class="tab-header-description">
+        <div class="findings-filter-bar">
+          <div class="filter-group">
+            <span class="filter-label">Filter Category:</span>
+            <button class="btn-filter active" data-filter="all">All</button>
+            <button class="btn-filter" data-filter="database">Database</button>
+            <button class="btn-filter" data-filter="dependency">Dependencies</button>
+            <button class="btn-filter" data-filter="infrastructure">Infrastructure</button>
+            <button class="btn-filter" data-filter="configuration">Configuration</button>
+            <button class="btn-filter" data-filter="code">Code</button>
+            <button class="btn-filter" data-filter="traffic">Traffic Patterns</button>
+            <button class="btn-filter" data-filter="external_service">External Services</button>
+          </div>
+          <div class="filter-count" id="filteredCountLabel">Showing all findings</div>
+        </div>
+      </div>
+
+      <div class="findings-grid" id="findingsGrid"></div>
+    </div>
+
+    <!-- Tab 4: Historical Incident Matches -->
+    <div id="tab-incidents" class="tab-pane">
+      <div class="tab-header-description">
+        <h3>Correlated Historical Incident Patterns</h3>
+        <p>Curated SRE post-mortem failure archetypes matched against detected change signals.</p>
+      </div>
+
+      <div class="incidents-grid" id="incidentsGrid"></div>
+    </div>
+
+    <!-- Tab 5: Safer Rollout Strategy -->
+    <div id="tab-rollout" class="tab-pane">
+      <div class="tab-header-description">
+        <div class="rollout-strategy-header">
+          <div>
+            <span class="strategy-badge" id="strategyNameBadge">EXPAND/CONTRACT PHASED ROLLOUT</span>
+            <h3 class="strategy-title" id="strategyTitle">Recommended Deployment Plan</h3>
+          </div>
+        </div>
+      </div>
+
+      <div class="rollout-steps-container" id="rolloutStepsContainer"></div>
+    </div>
+
+    <!-- Tab 6: Monitoring & Rollback Conditions -->
+    <div id="tab-monitoring" class="tab-pane">
+      <div class="monitoring-layout">
+        <!-- Golden Monitoring Signals -->
+        <div class="monitoring-column">
+          <div class="column-card">
+            <div class="column-header">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+              <h4>Recommended Production Monitoring Signals</h4>
+            </div>
+            <p class="column-sub">Specific telemetry signals required to detect production failure modes during deployment.</p>
+            <div class="monitoring-list" id="monitoringList"></div>
+          </div>
+        </div>
+
+        <!-- Rollback & Abort Conditions -->
+        <div class="rollback-column">
+          <div class="column-card abort-card">
+            <div class="column-header">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <h4>Automated Rollback & Abort Criteria</h4>
+            </div>
+            <p class="column-sub">Immediate cutover abort conditions to arrest incident blast radius.</p>
+            <div class="rollback-list" id="rollbackList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 7: Normalized Evidence JSON -->
+    <div id="tab-evidence" class="tab-pane">
+      <div class="tab-header-description">
+        <div class="evidence-header-flex">
+          <div>
+            <h3>Normalized Evidence JSON (Intermediate Representation)</h3>
+            <p>Every finding was discovered deterministically before being processed by the AI reasoning layer.</p>
+          </div>
+          <button class="btn btn-outline" id="copyEvidenceBtn" onclick="copyEvidenceJson()">
+            Copy Evidence JSON
+          </button>
+        </div>
+      </div>
+
+      <div class="json-viewer-container">
+        <pre><code id="evidenceJsonPre"></code></pre>
+      </div>
+    </div>
+
+  </section>
+
+</div>
+{% endblock %}

@@ -1,0 +1,124 @@
+[
+  {
+    "id": "INC-001",
+    "title": "Old Application Pods Failed on Dropped DB Column During Rolling Deploy",
+    "patterns": [
+      "destructive_migration",
+      "drop_column",
+      "schema_compatibility",
+      "destructive_database_change"
+    ],
+    "failure": "Old application instances still running during rolling deployment referenced removed database columns, causing immediate query crashes.",
+    "impact": "Spike in HTTP 500 errors and degraded transaction processing during rolling release window.",
+    "severity": "critical"
+  },
+  {
+    "id": "INC-002",
+    "title": "Unbounded External API Latency Cascading to Thread Pool Starvation",
+    "patterns": [
+      "external_api_call",
+      "missing_timeout",
+      "synchronous_external_call",
+      "traffic_amplification_risk"
+    ],
+    "failure": "Synchronous call to external provider lacked request timeouts; downstream provider degraded, holding worker threads and starving incoming requests.",
+    "impact": "Global service latency spike to 45s, worker starvation, cascading gateway 504 timeouts.",
+    "severity": "high"
+  },
+  {
+    "id": "INC-003",
+    "title": "Single Replica Downtime During Container Re-creation",
+    "patterns": [
+      "single_replica_risk",
+      "reduced_redundancy",
+      "redundancy_loss"
+    ],
+    "failure": "Service scaled down to replica count 1 lost zero-downtime rolling guarantees. During image pull and cold start, no instances served traffic.",
+    "impact": "100% downtime for 3.5 minutes on critical user endpoints during deployment.",
+    "severity": "high"
+  },
+  {
+    "id": "INC-004",
+    "title": "Major SDK Upgrade Introduced Breaking Runtime Parameter Mismatch",
+    "patterns": [
+      "major_dependency_upgrade",
+      "payment_dependency_upgrade",
+      "sdk_upgrade"
+    ],
+    "failure": "Major payment SDK version upgrade altered webhook signature verification and error response types; passed unit mocks but failed live callbacks.",
+    "impact": "Payment webhook failures, customer checkout lockup for 40 minutes.",
+    "severity": "high"
+  },
+  {
+    "id": "INC-005",
+    "title": "Unbounded Query on New Endpoint Caused Memory Exhaustion Under Traffic",
+    "patterns": [
+      "unbounded_query",
+      "missing_pagination",
+      "traffic_amplification_risk"
+    ],
+    "failure": "New API endpoint performed full-table scanning without pagination. At 50 QPS in production, memory footprint exploded causing Linux OOM killer invocation.",
+    "impact": "Repeated container OOMKilled crashes and cluster-wide memory thrashing.",
+    "severity": "high"
+  },
+  {
+    "id": "INC-006",
+    "title": "Connection Pool Exhaustion After Worker Concurrency Increase",
+    "patterns": [
+      "connection_pool_change",
+      "database_timeout",
+      "high_concurrency"
+    ],
+    "failure": "Increased worker threads without proportional database max_connections limit, causing Postgres 'too many clients already' errors.",
+    "impact": "Database refused new connections; all API read/write operations stalled.",
+    "severity": "medium"
+  },
+  {
+    "id": "INC-007",
+    "title": "NOT NULL Constraint Added Without Default Broken Existing Writes",
+    "patterns": [
+      "not_null_addition",
+      "destructive_migration",
+      "schema_compatibility"
+    ],
+    "failure": "Migration added a NOT NULL constraint without default value before the application began writing the new field.",
+    "impact": "All incoming insert operations failed with database constraint violations.",
+    "severity": "high"
+  },
+  {
+    "id": "INC-008",
+    "title": "Retry Storm Amplification Triggered Downstream Cascading Outage",
+    "patterns": [
+      "retry_amplification",
+      "missing_timeout",
+      "error_handling"
+    ],
+    "failure": "Aggressive client-side retries with exponential backoff removed amplified requests by 5x during minor network hiccup, overwhelming downstream API.",
+    "impact": "Cascading brownout across downstream microservices.",
+    "severity": "medium"
+  },
+  {
+    "id": "INC-009",
+    "title": "Readiness Probe Timeout Misconfiguration Caused Routing Flapping",
+    "patterns": [
+      "health_check_change",
+      "probe_misconfiguration",
+      "infrastructure_risk"
+    ],
+    "failure": "Readiness probe endpoint pointed to a heavy DB query with a 1s timeout; minor DB query latency led Kubernetes to pull healthy pods from service endpoints.",
+    "impact": "Traffic dropped to zero healthy endpoints despite application running normally.",
+    "severity": "medium"
+  },
+  {
+    "id": "INC-010",
+    "title": "Autoscaling Limit Reduction Caused Pod Saturation During Marketing Event",
+    "patterns": [
+      "resource_limit_reduction",
+      "autoscaling_removal",
+      "single_replica_risk"
+    ],
+    "failure": "Deployment manifest reduced maxReplicas and CPU limits to cut costs; sudden traffic influx pinned CPU at 100% with no autoscaling headroom.",
+    "impact": "Severe request latency degradation and queue drops for 2 hours.",
+    "severity": "medium"
+  }
+]

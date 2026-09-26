@@ -1,0 +1,53 @@
+{
+  "scenario_id": "scenario-5",
+  "title": "Scenario 5: Combined High-Blast-Radius Release",
+  "description": "Composite deployment containing destructive database migration, redundancy reduction, major SDK upgrade, and missing timeouts.",
+  "repo_meta": {
+    "owner": { "login": "enterprise-nexus" },
+    "name": "core-banking-api",
+    "full_name": "enterprise-nexus/core-banking-api",
+    "html_url": "https://github.com/enterprise-nexus/core-banking-api",
+    "description": "Mission-critical financial accounts and ledger orchestration engine",
+    "default_branch": "main"
+  },
+  "baseline_commit": "5555666677778888999900001111222233334444",
+  "deployment_commit": "0000111122223333444455556666777788889999",
+  "single_commit_mode": false,
+  "changed_files": [
+    {
+      "filename": "migrations/009_drop_legacy_account_number.sql",
+      "status": "added",
+      "additions": 3,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,3 @@\n+-- Drop old unhashed account column\n+ALTER TABLE bank_accounts DROP COLUMN legacy_account_number;\n+ALTER TABLE bank_accounts ADD COLUMN iban VARCHAR(34) NOT NULL;"
+    },
+    {
+      "filename": "k8s/deployment.yaml",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "patch": "@@ -12,2 +12,2 @@ spec:\n-  replicas: 4\n+  replicas: 1"
+    },
+    {
+      "filename": "requirements.txt",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 2,
+      "patch": "@@ -5,2 +5,2 @@\n-stripe==10.1.0\n+stripe==12.2.0\n-psycopg2-binary==2.8.5\n+psycopg2-binary==2.9.9"
+    },
+    {
+      "filename": "src/ledger/transaction.py",
+      "status": "modified",
+      "additions": 8,
+      "deletions": 1,
+      "patch": "@@ -80,2 +80,9 @@ def execute_wire_transfer(account_id: str, amount: float):\n+    # Unbounded fetch of all historic ledger entries\n+    history = db.query(LedgerEntry).all()\n+    # External sanction screening check without timeout\n+    screening = requests.post(\"https://api.sanctions-check.gov/v1/verify\", json={\"account\": account_id})\n+    if screening.status_code != 200:\n+        raise Exception(\"Sanction screening failed\")"
+    },
+    {
+      "filename": "config/production.env",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 2,
+      "patch": "@@ -14,2 +14,2 @@\n-DB_POOL_SIZE=20\n+DB_POOL_SIZE=150\n-DEBUG=False\n+DEBUG=True"
+    }
+  ]
+}

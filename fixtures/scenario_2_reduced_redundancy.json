@@ -1,0 +1,32 @@
+{
+  "scenario_id": "scenario-2",
+  "title": "Scenario 2: Reduced Redundancy & Availability Risk",
+  "description": "Kubernetes manifest changes replicas from 3 to 1 and slashes CPU limits.",
+  "repo_meta": {
+    "owner": { "login": "fintech-core" },
+    "name": "payment-gateway",
+    "full_name": "fintech-core/payment-gateway",
+    "html_url": "https://github.com/fintech-core/payment-gateway",
+    "description": "High-throughput transaction ingestion gateway",
+    "default_branch": "main"
+  },
+  "baseline_commit": "1111222233334444555566667777888899990000",
+  "deployment_commit": "9999888877776666555544443333222211110000",
+  "single_commit_mode": false,
+  "changed_files": [
+    {
+      "filename": "k8s/deployment.yaml",
+      "status": "modified",
+      "additions": 4,
+      "deletions": 6,
+      "patch": "@@ -8,12 +8,10 @@ spec:\n-  replicas: 3\n+  replicas: 1\n   template:\n     spec:\n       containers:\n         - name: app\n-          resources:\n-            limits:\n-              cpu: \"1000m\"\n-              memory: \"2Gi\"\n+          resources:\n+            limits:\n+              cpu: \"100m\"\n+              memory: \"256Mi\""
+    },
+    {
+      "filename": "k8s/service.yaml",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "patch": "@@ -5,2 +5,2 @@ spec:\n   ports:\n-    - port: 8080\n+    - port: 80"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "scenario_id": "scenario-1",
+  "title": "Scenario 1: Destructive Database Migration in Rolling Deployment",
+  "description": "A database migration drops column 'legacy_token' while old pods are still active in production.",
+  "repo_meta": {
+    "owner": { "login": "cloud-native-org" },
+    "name": "identity-service",
+    "full_name": "cloud-native-org/identity-service",
+    "html_url": "https://github.com/cloud-native-org/identity-service",
+    "description": "Core authentication and SSO identity microservice",
+    "default_branch": "main"
+  },
+  "baseline_commit": "a1b2c3d4e5f67890123456789012345678901234",
+  "deployment_commit": "f9e8d7c6b5a43210987654321098765432109876",
+  "single_commit_mode": false,
+  "changed_files": [
+    {
+      "filename": "migrations/004_drop_legacy_token.sql",
+      "status": "added",
+      "additions": 4,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,4 @@\n+-- Migration 004: Deprecate legacy auth tokens\n+-- Dropping unneeded column\n+ALTER TABLE users DROP COLUMN legacy_token;\n+ALTER TABLE users ADD COLUMN updated_at TIMESTAMP NOT NULL;"
+    },
+    {
+      "filename": "src/auth/service.py",
+      "status": "modified",
+      "additions": 5,
+      "deletions": 4,
+      "patch": "@@ -45,7 +45,7 @@ class AuthService:\n-    def verify_token(self, user_id):\n-        query = \"SELECT legacy_token, active FROM users WHERE id = %s\"\n-        return self.db.execute(query, (user_id,)).fetchone()\n+    def verify_token(self, user_id):\n+        query = \"SELECT session_jwt, active FROM users WHERE id = %s\"\n+        return self.db.execute(query, (user_id,)).fetchone()"
+    },
+    {
+      "filename": "docker-compose.yml",
+      "status": "modified",
+      "additions": 3,
+      "deletions": 0,
+      "patch": "@@ -12,3 +12,6 @@ services:\n+  postgres:\n+    image: postgres:15-alpine\n+  redis:\n+    image: redis:7-alpine"
+    }
+  ]
+}

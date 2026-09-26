@@ -1,0 +1,32 @@
+{
+  "scenario_id": "scenario-3",
+  "title": "Scenario 3: Major Payment SDK Upgrade (Stripe 10.x → 12.x)",
+  "description": "Critical payment SDK receives a major version bump with runtime signature modifications.",
+  "repo_meta": {
+    "owner": { "login": "ecom-platform" },
+    "name": "billing-service",
+    "full_name": "ecom-platform/billing-service",
+    "html_url": "https://github.com/ecom-platform/billing-service",
+    "description": "E-commerce subscription and credit card billing service",
+    "default_branch": "main"
+  },
+  "baseline_commit": "3333444455556666777788889999000011112222",
+  "deployment_commit": "7777888899990000111122223333444455556666",
+  "single_commit_mode": false,
+  "changed_files": [
+    {
+      "filename": "requirements.txt",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 2,
+      "patch": "@@ -1,4 +1,4 @@\n fastapi==0.110.0\n-stripe==10.2.0\n+stripe==12.1.0\n-psycopg2-binary==2.8.6\n+psycopg2-binary==2.9.9\n uvicorn==0.28.0"
+    },
+    {
+      "filename": "src/billing/checkout.py",
+      "status": "modified",
+      "additions": 6,
+      "deletions": 3,
+      "patch": "@@ -24,5 +24,8 @@ def process_customer_checkout(customer_id: str, amount_cents: int):\n-    charge = stripe.Charge.create(\n-        amount=amount_cents,\n-        currency=\"usd\",\n-        customer=customer_id\n-    )\n+    intent = stripe.PaymentIntent.create(\n+        amount=amount_cents,\n+        currency=\"usd\",\n+        customer=customer_id,\n+        automatic_payment_methods={\"enabled\": True}\n+    )\n+    return intent"
+    }
+  ]
+}

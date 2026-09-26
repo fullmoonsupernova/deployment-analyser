@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}SRE Production Deployment Risk Analyzer{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="sre-dark-theme">
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">SRE RISK ANALYZER</span>
+          <span class="brand-sub">Production Deployment Pre-Flight Engine</span>
+        </div>
+      </div>
+
+      <div class="nav-badges">
+        <span class="badge badge-pulse">
+          <span class="pulse-dot"></span>
+          SCANNER v{{ scanner_version }}
+        </span>
+        <span class="badge badge-meta">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+          </svg>
+          MODEL: {{ groq_model }}
+        </span>
+        {% if has_github_token %}
+        <span class="badge badge-success">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+          GITHUB AUTH: ACTIVE
+        </span>
+        {% else %}
+        <span class="badge badge-warning" title="Public rate limit applies (60 req/hr). Add GITHUB_TOKEN in .env for 5000 req/hr.">
+          GITHUB: PUBLIC TIER
+        </span>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="main-wrapper">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- SRE Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-principle">
+        <span class="principle-tag">DESIGN PRINCIPLE</span>
+        <strong>DETERMINISTIC EVIDENCE FIRST → AI REASONING SECOND</strong>
+        <p>The deterministic scanner discovers what actually changed. The AI reasons strictly about how those verified factors interact under real production conditions.</p>
+      </div>
+      <div class="footer-note">
+        <span>Production Safety Pre-flight • Hackathon Edition</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
