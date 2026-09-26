@@ -111,33 +111,50 @@ class ScannerOrchestrator:
         historical_matches = self.incident_matcher.match(normalized_findings)
 
         # 10. Compute Deterministic Baseline Risk Score
-        risk_score = 0.0
-        significant_count = 0
-        has_critical = False
-        has_high = False
+        crit_score = 0.0
+        high_score = 0.0
+        med_score = 0.0
+        low_score = 0.0
+        
+        crit_count = 0
+        high_count = 0
+        med_count = 0
+        low_count = 0
 
         for f in normalized_findings:
             sev = f.severity_hint.lower()
             if sev == "critical":
-                risk_score += 25.0
-                significant_count += 1
-                has_critical = True
+                crit_score += 25.0
+                crit_count += 1
             elif sev == "high":
-                risk_score += 15.0
-                significant_count += 1
-                has_high = True
+                high_score += 15.0
+                high_count += 1
             elif sev == "medium":
-                risk_score += 8.0
+                med_score += 8.0
+                med_count += 1
             elif sev == "low":
-                risk_score += 3.0
+                low_score += 2.5
+                low_count += 1
 
-        risk_score = min(100.0, round(risk_score, 1))
+        # Apply diminishing returns / caps to prevent low-severity noise from artificially inflating risk
+        capped_low = min(15.0, low_score)
+        capped_med = min(30.0, med_score)
+        capped_high = min(60.0, high_score)
+        
+        risk_score = min(100.0, round(crit_score + capped_high + capped_med + capped_low, 1))
 
-        if risk_score >= 45.0 or has_critical:
+        # Significant factors are those that carry meaningful production hazard (Critical, High, Medium)
+        significant_count = crit_count + high_count + med_count
+
+        # Risk Level Determination:
+        # CRITICAL requires at least 1 CRITICAL finding, OR multiple HIGH findings with severe score
+        if crit_count > 0 or (high_count >= 2 and risk_score >= 50.0):
             risk_level = "CRITICAL"
-        elif risk_score >= 25.0 or has_high:
+        # HIGH requires at least 1 HIGH finding, OR extensive MEDIUM findings
+        elif high_count > 0 or (med_count >= 4 and risk_score >= 40.0):
             risk_level = "HIGH"
-        elif risk_score >= 10.0:
+        # MEDIUM for moderate score or any medium findings
+        elif risk_score >= 12.0 or med_count > 0:
             risk_level = "MEDIUM"
         else:
             risk_level = "LOW"

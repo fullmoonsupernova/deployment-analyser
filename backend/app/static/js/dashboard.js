@@ -83,7 +83,14 @@ function renderDashboard(data) {
     }
     if (riskHeadline) {
       const factors = data.significant_factors_count || 0;
-      riskHeadline.textContent = `${factors} significant risk factor${factors === 1 ? '' : 's'}`;
+      const totalFindings = (data.findings || []).length;
+      if (factors > 0) {
+        riskHeadline.textContent = `${factors} significant risk factor${factors === 1 ? '' : 's'} (${totalFindings} total findings)`;
+      } else if (totalFindings > 0) {
+        riskHeadline.textContent = `${totalFindings} minor finding${totalFindings === 1 ? '' : 's'} (0 high/medium hazards)`;
+      } else {
+        riskHeadline.textContent = "0 risk factors detected";
+      }
     }
     if (cacheBadge) {
       if (data.cached) {
@@ -718,7 +725,16 @@ function renderSreVerdict(data) {
 
   const level = (data.deterministic_risk_level || "MEDIUM").toUpperCase();
   const factors = data.significant_factors_count || 0;
+  const findings = data.findings || [];
   const strategy = data.ai_analysis?.rollout_strategy?.strategy || "Canary";
+
+  const critFindings = findings.filter(f => (f.severity_hint || "").toLowerCase() === "critical");
+  const highFindings = findings.filter(f => (f.severity_hint || "").toLowerCase() === "high");
+  const medFindings = findings.filter(f => (f.severity_hint || "").toLowerCase() === "medium");
+
+  const hasDbHazard = findings.some(f => f.category === "database");
+  const hasInfraHazard = findings.some(f => f.category === "infrastructure");
+  const hasExtHazard = findings.some(f => f.category === "external_service");
 
   if (!card) return;
 
@@ -728,28 +744,40 @@ function renderSreVerdict(data) {
     card.classList.add("verdict-critical");
     if (icon) icon.textContent = "🛑";
     if (title) title.textContent = "DEPLOYMENT BLOCKED";
-    if (desc) desc.textContent = `${factors} critical hazard signals detected (destructive schema, single replica, or breaking contracts). Hard gate active: requires Senior SRE sign-off and multi-stage migration.`;
-    if (rolloutTag) rolloutTag.textContent = "Multi-Stage Expand/Contract";
+    if (hasDbHazard) {
+      if (desc) desc.textContent = `${critFindings.length + highFindings.length} critical hazard signal${critFindings.length + highFindings.length === 1 ? '' : 's'} detected, including database schema modifications. Hard gate active: senior SRE sign-off and multi-stage expand/contract migration required.`;
+      if (rolloutTag) rolloutTag.textContent = "Expand/Contract Migration";
+    } else if (hasInfraHazard) {
+      if (desc) desc.textContent = `${factors} critical infrastructure hazard signal${factors === 1 ? '' : 's'} detected (single replica redundancy loss or pod disruption). Hard gate active: requires Senior SRE sign-off.`;
+      if (rolloutTag) rolloutTag.textContent = "Infra Sign-off Required";
+    } else {
+      if (desc) desc.textContent = `${factors} high-impact production hazard signal${factors === 1 ? '' : 's'} detected. Hard gate active: automated direct release blocked pending manual SRE review.`;
+      if (rolloutTag) rolloutTag.textContent = "Manual SRE Gate";
+    }
     if (canaryTag) canaryTag.textContent = "Deployment Gated";
   } else if (level === "HIGH") {
     card.classList.add("verdict-high");
     if (icon) icon.textContent = "⚠️";
     if (title) title.textContent = "MANDATORY CANARY";
-    if (desc) desc.textContent = `${factors} high-impact production risk factors identified. Automated direct release rejected. Gated canary rollout with automated rollback triggers required.`;
+    if (desc) desc.textContent = `${factors} high-impact production risk factor${factors === 1 ? '' : 's'} identified (${highFindings.length} high, ${medFindings.length} medium). Direct release rejected; gated canary rollout with automated rollback triggers required.`;
     if (rolloutTag) rolloutTag.textContent = `Strategy: ${strategy.toUpperCase()}`;
     if (canaryTag) canaryTag.textContent = "Automated Rollback Active";
   } else if (level === "MEDIUM") {
     card.classList.add("verdict-medium");
     if (icon) icon.textContent = "🛡️";
     if (title) title.textContent = "GUARDED ROLLOUT";
-    if (desc) desc.textContent = `Moderate production risk detected across ${factors} signal${factors === 1 ? '' : 's'}. Proceed with canary traffic split and real-time metric thresholds.`;
+    if (hasExtHazard) {
+      if (desc) desc.textContent = `Moderate production risk detected across ${factors} significant signal${factors === 1 ? '' : 's'}, including external service network calls. Proceed with canary traffic split and real-time latency/error alerting.`;
+    } else {
+      if (desc) desc.textContent = `Moderate production risk detected across ${factors} significant signal${factors === 1 ? '' : 's'}. Proceed with canary traffic split and real-time metric thresholds.`;
+    }
     if (rolloutTag) rolloutTag.textContent = `Strategy: ${strategy.toUpperCase()}`;
-    if (canaryTag) canaryTag.textContent = "Metric Gating Active";
+    if (canaryTag) canaryTag.textContent = "Canary Gating Active";
   } else {
     card.classList.add("verdict-low");
     if (icon) icon.textContent = "✅";
     if (title) title.textContent = "STANDARD CANARY APPROVED";
-    if (desc) desc.textContent = `Low production release risk. No breaking architectural or destructive changes detected. Safe for automated deployment pipeline with standard canary verification.`;
+    if (desc) desc.textContent = `Low production release risk. No breaking architectural or destructive changes detected (${findings.length} minor signal${findings.length === 1 ? '' : 's'}). Safe for automated deployment pipeline with standard canary verification.`;
     if (rolloutTag) rolloutTag.textContent = "Standard Progressive Rollout";
     if (canaryTag) canaryTag.textContent = "Health Probes Active";
   }
