@@ -35,12 +35,36 @@ class GroqAnalyzer:
             logger.info("GROQ_API_KEY not configured. Generating deterministic SRE reasoning.")
             return self.generate_deterministic_fallback(evidence)
 
-        evidence_dict = evidence.model_dump()
-        user_prompt = build_user_prompt(json.dumps(evidence_dict, indent=2))
+        # Build a compact, token-efficient evidence summary for the LLM
+        compact_findings = [
+            {
+                "id": f.id,
+                "category": f.category,
+                "type": f.type,
+                "severity": f.severity_hint,
+                "file": f.file,
+                "line": f.line,
+                "description": f.description,
+                "snippet": (f.evidence[:160] + "...") if len(f.evidence) > 160 else f.evidence
+            }
+            for f in evidence.findings
+        ]
+
+        compact_payload = {
+            "repository": evidence.repository.get("full_name") or evidence.repository.get("name", "app"),
+            "findings": compact_findings,
+            "inferred_services": [s.name for s in evidence.services],
+            "historical_incident_patterns": [
+                {"id": m.incident_id, "title": m.title, "patterns": m.matched_patterns}
+                for m in evidence.historical_matches
+            ]
+        }
+
+        user_prompt = build_user_prompt(json.dumps(compact_payload, indent=2))
 
         try:
             raw_response = await self._call_groq(user_prompt)
-            parsed = self._parse_and_validate(raw_response, valid_finding_ids)
+            parsed = self._parse_and_validate(raw_response, evidence)
             return parsed
         except Exception as e:
             logger.warning(f"Groq API call or validation failed ({str(e)}). Retrying with correction...")
@@ -52,7 +76,7 @@ class GroqAnalyzer:
                     f"{user_prompt}"
                 )
                 raw_response = await self._call_groq(correction_prompt)
-                parsed = self._parse_and_validate(raw_response, valid_finding_ids)
+                parsed = self._parse_and_validate(raw_response, evidence)
                 return parsed
             except Exception as retry_err:
                 logger.error(f"Groq retry also failed ({str(retry_err)}). Falling back to deterministic reasoning.")
@@ -70,10 +94,11 @@ class GroqAnalyzer:
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.2,
+            "max_tokens": 1500,
             "response_format": {"type": "json_object"}
         }
 
-        async with httpx.AsyncClient(timeout=35.0) as client:
+        async with httpx.AsyncClient(timeout=40.0) as client:
             resp = await client.post(self.api_url, headers=headers, json=payload)
             if resp.status_code != 200:
                 raise GroqAnalysisError(f"Groq API returned HTTP {resp.status_code}: {resp.text}")
@@ -83,21 +108,40 @@ class GroqAnalyzer:
                 raise GroqAnalysisError("Empty choices returned from Groq API")
             return choices[0]["message"]["content"]
 
-    def _parse_and_validate(self, json_text: str, valid_finding_ids: Set[str]) -> GroqAnalysisResponse:
-        """Parse JSON response and enforce Hallucination Control on evidence_ids."""
+    def _parse_and_validate(self, json_text: str, evidence: EvidencePackage) -> GroqAnalysisResponse:
+        """Parse JSON response, normalize keys, and enforce Hallucination Control on evidence_ids."""
         try:
             data = json.loads(json_text)
         except Exception as e:
             raise GroqAnalysisError(f"Malformed JSON from AI model: {str(e)}")
 
-        response_obj = GroqAnalysisResponse.model_validate(data)
+        valid_finding_ids = {f.id for f in evidence.findings}
+
+        # Normalize potential key discrepancies from LLM
+        if "rollback_conditions" not in data:
+            for alt in ["abort_conditions", "abort_criteria", "abort_triggers", "rollback_criteria"]:
+                if alt in data:
+                    data["rollback_conditions"] = data[alt]
+                    break
+
+        if "failure_scenarios" not in data and "scenarios" in data:
+            data["failure_scenarios"] = data["scenarios"]
+
+        if "rollout_strategy" not in data and "rollout" in data:
+            data["rollout_strategy"] = data["rollout"]
+
+        try:
+            response_obj = GroqAnalysisResponse.model_validate(data)
+        except Exception as ve:
+            logger.warning(f"Direct schema validation error ({ve}). Attempting recovery with defaults.")
+            fallback = self.generate_deterministic_fallback(evidence)
+            return fallback
 
         # Enforce Hallucination Control: Every scenario must map to existing deterministic finding IDs
         sanitized_scenarios: List[FailureScenario] = []
         for sc in response_obj.failure_scenarios:
             valid_ids = [eid for eid in sc.evidence_ids if eid in valid_finding_ids]
             if not valid_ids and valid_finding_ids:
-                # AI hallucinated an evidence ID that does not exist in findings
                 logger.warning(f"Rejecting scenario '{sc.title}': No valid evidence IDs ({sc.evidence_ids})")
                 continue
             
@@ -106,11 +150,23 @@ class GroqAnalyzer:
 
         response_obj.failure_scenarios = sanitized_scenarios
         if not response_obj.failure_scenarios and valid_finding_ids:
-            # Fall back to deterministic scenarios if all were rejected
-            fallback = self.generate_deterministic_fallback(EvidencePackage(
-                repository={}, findings=[f for f in evidence.findings], services=[], relationships=[], historical_matches=[]
-            ))
+            # Fall back to deterministic scenarios if all AI scenarios were hallucinated
+            fallback = self.generate_deterministic_fallback(evidence)
             response_obj.failure_scenarios = fallback.failure_scenarios
+
+        # Ensure rollback conditions and monitoring exist
+        if not response_obj.rollback_conditions:
+            response_obj.rollback_conditions = [
+                "HTTP 5xx error rate exceeds 1.0% for > 60s during canary cutover",
+                "p99 latency increases by more than 2.5x compared to baseline pre-deploy metrics",
+                "Downstream database query failure or lock contention detected"
+            ]
+
+        if not response_obj.monitoring:
+            response_obj.monitoring = [
+                MonitoringSignal(metric="HTTP 5xx Error Rate", reason="Tracks server-side errors during deployment"),
+                MonitoringSignal(metric="p95 / p99 Request Latency", reason="Detects lock contention and downstream timeouts")
+            ]
 
         return response_obj
 

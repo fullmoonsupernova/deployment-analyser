@@ -29,6 +29,11 @@ Every failure scenario MUST reference one or more evidence IDs from the supplied
 Do not invent evidence.
 
 The output must be practical for an SRE or release engineer.
+Be concise and token-efficient:
+- Identify the 1 to 3 most critical failure scenarios.
+- Keep each failure chain to 3 to 4 clear sequential steps.
+- Keep the summary to 2 concise sentences.
+- Ensure rollback conditions and monitoring signals are concrete and actionable.
 
 You MUST respond strictly in valid JSON matching this schema:
 {

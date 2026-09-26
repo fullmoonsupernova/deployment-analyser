@@ -65,12 +65,12 @@ class MonitoringSignal(BaseModel):
     reason: str
 
 class GroqAnalysisResponse(BaseModel):
-    overall_assessment: str # low, medium, high, critical
-    summary: str
-    failure_scenarios: List[FailureScenario]
-    rollout_strategy: RolloutStrategy
-    monitoring: List[MonitoringSignal]
-    rollback_conditions: List[str]
+    overall_assessment: str = "medium" # low, medium, high, critical
+    summary: str = ""
+    failure_scenarios: List[FailureScenario] = Field(default_factory=list)
+    rollout_strategy: RolloutStrategy = Field(default_factory=lambda: RolloutStrategy(strategy="Automated Canary Rollout", steps=["Deploy 5% canary", "Monitor golden signals", "Promote to 100%"]))
+    monitoring: List[MonitoringSignal] = Field(default_factory=list)
+    rollback_conditions: List[str] = Field(default_factory=list)
 
 class DeploymentAnalysisResult(BaseModel):
     repository: Dict[str, Any]
