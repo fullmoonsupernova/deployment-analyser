@@ -3,7 +3,6 @@
 let activeScenarioIndex = 0;
 let cachedTopologyNodes = [];
 let cachedTopologyEdges = [];
-let currentAnalysisData = null;
 let activeCategoryFilter = "all";
 let activeSearchQuery = "";
 
@@ -38,61 +37,73 @@ function renderDashboard(data) {
   dashSection.classList.remove("hidden");
 
   // Save globally for exports & quick actions
-  currentAnalysisData = data;
+  window.currentAnalysisData = data;
 
   // 1. Repo Metadata
-  const repo = data.repository || {};
-  const repoTitle = document.getElementById("dashRepoTitle");
-  if (repoTitle) {
-    repoTitle.textContent = repo.full_name || `${repo.owner}/${repo.name}`;
-  }
-  const repoDesc = document.getElementById("dashRepoDesc");
-  if (repoDesc) {
-    repoDesc.textContent = repo.description || "Production Repository Revision Analysis";
-  }
+  try {
+    const repo = data.repository || {};
+    const repoTitle = document.getElementById("dashRepoTitle");
+    if (repoTitle) {
+      repoTitle.textContent = repo.full_name || `${repo.owner}/${repo.name}` || "Repository Analysis";
+    }
+    const repoDesc = document.getElementById("dashRepoDesc");
+    if (repoDesc) {
+      repoDesc.textContent = repo.description || "Production Repository Revision Analysis";
+    }
 
-  // 2. Commit SHAs
-  const baseSha = document.getElementById("dashBaselineSha");
-  if (baseSha) {
-    baseSha.textContent = (data.baseline_commit || "0000000").substring(0, 8);
-    baseSha.title = data.baseline_commit;
-  }
-  const candSha = document.getElementById("dashCandidateSha");
-  if (candSha) {
-    candSha.textContent = (data.deployment_commit || "0000000").substring(0, 8);
-    candSha.title = data.deployment_commit;
+    // 2. Commit SHAs
+    const baseSha = document.getElementById("dashBaselineSha");
+    if (baseSha) {
+      baseSha.textContent = (data.baseline_commit || "0000000").substring(0, 8);
+      baseSha.title = data.baseline_commit || "";
+    }
+    const candSha = document.getElementById("dashCandidateSha");
+    if (candSha) {
+      candSha.textContent = (data.deployment_commit || "0000000").substring(0, 8);
+      candSha.title = data.deployment_commit || "";
+    }
+  } catch (err) {
+    console.warn("Error rendering repo metadata:", err);
   }
 
   // 3. Risk Gauge, Verdict Card & Observability Pillars
-  renderRiskGauge(data.deterministic_risk_score, data.deterministic_risk_level);
-  renderSreVerdict(data);
-  renderObservabilityPillars(data);
+  try {
+    renderRiskGauge(data.deterministic_risk_score, data.deterministic_risk_level);
+    renderSreVerdict(data);
+    renderObservabilityPillars(data);
 
-  const riskBadge = document.getElementById("riskLevelBadge");
-  const riskHeadline = document.getElementById("riskHeadline");
-  const cacheBadge = document.getElementById("cacheBadge");
+    const riskBadge = document.getElementById("riskLevelBadge");
+    const riskHeadline = document.getElementById("riskHeadline");
+    const cacheBadge = document.getElementById("cacheBadge");
 
-  const level = (data.deterministic_risk_level || "MEDIUM").toLowerCase();
-  if (riskBadge) {
-    riskBadge.className = `risk-badge ${level}`;
-    riskBadge.textContent = `${data.deterministic_risk_level} RISK`;
-  }
-  if (riskHeadline) {
-    const factors = data.significant_factors_count || 0;
-    riskHeadline.textContent = `${factors} significant risk factor${factors === 1 ? '' : 's'}`;
-  }
-  if (cacheBadge) {
-    if (data.cached) {
-      cacheBadge.classList.remove("hidden");
-    } else {
-      cacheBadge.classList.add("hidden");
+    const level = (data.deterministic_risk_level || "MEDIUM").toLowerCase();
+    if (riskBadge) {
+      riskBadge.className = `risk-badge ${level}`;
+      riskBadge.textContent = `${data.deterministic_risk_level || "MEDIUM"} RISK`;
     }
+    if (riskHeadline) {
+      const factors = data.significant_factors_count || 0;
+      riskHeadline.textContent = `${factors} significant risk factor${factors === 1 ? '' : 's'}`;
+    }
+    if (cacheBadge) {
+      if (data.cached) {
+        cacheBadge.classList.remove("hidden");
+      } else {
+        cacheBadge.classList.add("hidden");
+      }
+    }
+  } catch (err) {
+    console.warn("Error rendering risk overview:", err);
   }
 
   // 4. Executive Summary
-  const execSummary = document.getElementById("executiveSummaryText");
-  if (execSummary) {
-    execSummary.textContent = data.ai_analysis?.summary || "Comprehensive analysis generated based on deterministic signals.";
+  try {
+    const execSummary = document.getElementById("executiveSummaryText");
+    if (execSummary) {
+      execSummary.textContent = data.ai_analysis?.summary || "Comprehensive analysis generated based on deterministic signals.";
+    }
+  } catch (err) {
+    console.warn("Error rendering executive summary:", err);
   }
 
   // 5. Update Tab Counts
@@ -101,27 +112,35 @@ function renderDashboard(data) {
   const services = data.services || [];
   const incidents = data.historical_matches || [];
 
-  document.getElementById("countScenarios").textContent = scenarios.length;
-  document.getElementById("countServices").textContent = services.length;
-  document.getElementById("countFindings").textContent = findings.length;
-  document.getElementById("countIncidents").textContent = incidents.length;
+  try {
+    const countSc = document.getElementById("countScenarios");
+    if (countSc) countSc.textContent = scenarios.length;
+    const countSv = document.getElementById("countServices");
+    if (countSv) countSv.textContent = services.length;
+    const countFd = document.getElementById("countFindings");
+    if (countFd) countFd.textContent = findings.length;
+    const countIn = document.getElementById("countIncidents");
+    if (countIn) countIn.textContent = incidents.length;
+  } catch (err) {
+    console.warn("Error updating tab counts:", err);
+  }
 
   // Cache topology data
   cachedTopologyNodes = services;
   cachedTopologyEdges = data.relationships || [];
 
-  // 6. Render Subcomponents
-  renderScenarios(scenarios, findings);
-  renderTopologyGraph(cachedTopologyNodes, cachedTopologyEdges);
-  renderFindings(findings);
-  renderIncidents(incidents);
-  renderRolloutStrategy(data.ai_analysis?.rollout_strategy);
-  renderMonitoring(data.ai_analysis?.monitoring, data.ai_analysis?.rollback_conditions);
-  renderEvidenceJson(data);
+  // 6. Render Subcomponents with independent error boundaries
+  try { renderScenarios(scenarios, findings); } catch (e) { console.error("renderScenarios error:", e); }
+  try { renderTopologyGraph(cachedTopologyNodes, cachedTopologyEdges); } catch (e) { console.error("renderTopologyGraph error:", e); }
+  try { renderFindings(findings); } catch (e) { console.error("renderFindings error:", e); }
+  try { renderIncidents(incidents); } catch (e) { console.error("renderIncidents error:", e); }
+  try { renderRolloutStrategy(data.ai_analysis?.rollout_strategy); } catch (e) { console.error("renderRolloutStrategy error:", e); }
+  try { renderMonitoring(data.ai_analysis?.monitoring, data.ai_analysis?.rollback_conditions); } catch (e) { console.error("renderMonitoring error:", e); }
+  try { renderEvidenceJson(data); } catch (e) { console.error("renderEvidenceJson error:", e); }
 
   // Automatically select first scenario
   if (scenarios.length > 0) {
-    selectScenario(0, scenarios);
+    try { selectScenario(0, scenarios); } catch (e) { console.error("selectScenario error:", e); }
   }
 }
 
@@ -671,23 +690,21 @@ function renderRiskGauge(score, level) {
   }
 
   if (valueText) {
-    let current = 0;
-    const duration = 750;
+    const duration = 600;
     const startTime = performance.now();
 
-    function countStep(now) {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
+    function updateGauge() {
+      const now = performance.now();
+      const progress = Math.min(Math.max((now - startTime) / duration, 0), 1);
       const ease = 1 - Math.pow(1 - progress, 3);
-      current = Math.round(ease * numScore);
-      valueText.textContent = current;
+      valueText.textContent = Math.round(ease * numScore);
       if (progress < 1) {
-        requestAnimationFrame(countStep);
+        requestAnimationFrame(updateGauge);
       } else {
         valueText.textContent = numScore;
       }
     }
-    requestAnimationFrame(countStep);
+    requestAnimationFrame(updateGauge);
   }
 }
 
@@ -773,8 +790,8 @@ function renderObservabilityPillars(data) {
    ========================================================================= */
 
 function copyPrMarkdown() {
-  if (!currentAnalysisData) return;
-  const d = currentAnalysisData;
+  const d = window.currentAnalysisData;
+  if (!d) return;
   const level = d.deterministic_risk_level || "MEDIUM";
   const score = d.deterministic_risk_score || 0;
   const confidence = d.analysis_confidence || "HIGH";
@@ -855,8 +872,8 @@ function copyPrMarkdown() {
 }
 
 function exportMarkdownReport() {
-  if (!currentAnalysisData) return;
-  const d = currentAnalysisData;
+  const d = window.currentAnalysisData;
+  if (!d) return;
   const repoName = (d.repository?.name || "deployment").replace(/[^a-zA-Z0-9_-]/g, "_");
   const filename = `sre-risk-report-${repoName}.md`;
 
@@ -925,10 +942,11 @@ function exportMarkdownReport() {
 }
 
 function copyEvidenceJson() {
-  if (!currentAnalysisData) return;
-  const jsonStr = JSON.stringify(currentAnalysisData, null, 2);
+  const d = window.currentAnalysisData;
+  if (!d) return;
+  const jsonStr = JSON.stringify(d, null, 2);
   navigator.clipboard.writeText(jsonStr).then(() => {
-    const btn = document.getElementById("copyJsonBtn");
+    const btn = document.getElementById("copyJsonBtn") || document.getElementById("copyEvidenceBtn");
     if (btn) {
       const origHtml = btn.innerHTML;
       btn.classList.add("copied");

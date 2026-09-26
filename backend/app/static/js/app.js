@@ -1,6 +1,6 @@
 // SRE Production Deployment Risk Analyzer - Main App Controller
 
-let currentAnalysisData = null;
+window.currentAnalysisData = null;
 let lastAnalysisRequest = null;
 let timerInterval = null;
 
@@ -127,14 +127,27 @@ async function triggerAnalysis(endpoint, payload) {
     }
 
     const data = await resp.json();
-    currentAnalysisData = data;
+    window.currentAnalysisData = data;
 
     setTimeout(() => {
-      hideLoading();
-      renderDashboard(data);
-      const dashEl = document.getElementById("dashboardSection");
-      if (dashEl) {
-        dashEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      try {
+        hideLoading();
+        if (typeof renderDashboard === "function") {
+          renderDashboard(data);
+        } else {
+          console.error("renderDashboard is not a function:", typeof renderDashboard);
+          showError("Dashboard Load Error", "Dashboard script failed to execute. Please hard-refresh your browser (Ctrl+Shift+R or Cmd+Shift+R).");
+          return;
+        }
+        const dashEl = document.getElementById("dashboardSection");
+        if (dashEl) {
+          dashEl.classList.remove("hidden");
+          dashEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      } catch (renderErr) {
+        console.error("Dashboard render failed:", renderErr);
+        hideLoading();
+        showError("Dashboard Render Error", renderErr.message || String(renderErr));
       }
     }, 350);
 
@@ -186,17 +199,4 @@ function showError(title, message) {
 function dismissError() {
   const alertEl = document.getElementById("errorAlert");
   if (alertEl) alertEl.classList.add("hidden");
-}
-
-function copyEvidenceJson() {
-  if (!currentAnalysisData) return;
-  const jsonStr = JSON.stringify(currentAnalysisData, null, 2);
-  navigator.clipboard.writeText(jsonStr).then(() => {
-    const btn = document.getElementById("copyEvidenceBtn");
-    if (btn) {
-      const orig = btn.textContent;
-      btn.textContent = "Copied to Clipboard! ✓";
-      setTimeout(() => { btn.textContent = orig; }, 2000);
-    }
-  });
 }
