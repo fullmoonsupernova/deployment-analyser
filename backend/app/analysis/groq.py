@@ -145,8 +145,38 @@ class GroqAnalyzer:
                 logger.warning(f"Rejecting scenario '{sc.title}': No valid evidence IDs ({sc.evidence_ids})")
                 continue
             
-            sc.evidence_ids = valid_ids if valid_ids else list(valid_finding_ids)[:1]
-            sanitized_scenarios.append(sc)
+        # Enforce Grounding and Speculation Defense:
+        # A dependency change alone must NOT claim a specific unevidenced runtime failure mechanism (e.g. TemplateSyntaxError)
+        finding_map = {f.id: f for f in evidence.findings}
+        for sc in sanitized_scenarios:
+            ref_findings = [finding_map[eid] for eid in sc.evidence_ids if eid in finding_map]
+            all_minor_deps = ref_findings and all(f.type == "minor_dependency_upgrade" for f in ref_findings)
+            has_no_code_or_db = not any(f.category in ("code", "database") for f in ref_findings)
+
+            if all_minor_deps and has_no_code_or_db:
+                # Check for unsupported speculation about specific runtime crash exceptions
+                unsupported_terms = ["templatesyntaxerror", "syntaxerror", "payment failure", "auth failure", "database failure"]
+                is_speculative = any(term in sc.title.lower() for term in unsupported_terms) or \
+                                any(any(term in step.lower() for term in unsupported_terms) for step in sc.failure_chain)
+
+                if is_speculative:
+                    logger.info(f"Sanitizing speculative runtime failure scenario '{sc.title}' down to dependency compatibility uncertainty.")
+                    pkg_names = [f.metadata.get("package", "dependency") for f in ref_findings]
+                    pkg_str = ", ".join(pkg_names[:3])
+                    sc.title = f"Dependency Compatibility Uncertainty ({pkg_str})"
+                    sc.severity = "low"
+                    sc.confidence = 0.75
+                    sc.failure_chain = [
+                        f"Deployment introduces minor dependency update ({pkg_str})",
+                        "Application services start normally under existing configuration",
+                        "Minor behavioral or deprecation discrepancies may surface under specific edge-case inputs"
+                    ]
+                    sc.why_tests_may_miss_it = (
+                        "Minor dependency updates generally maintain backwards compatibility and pass standard test suites. "
+                        "Evidence does not establish specific runtime failure paths or breaking API incompatibilities."
+                    )
+                    sc.blast_radius = "Low expected blast radius. Scoped to edge-case requests touching updated library methods."
+                    sc.mitigation = "Deploy via standard automated canary with error rate monitoring."
 
         response_obj.failure_scenarios = sanitized_scenarios
         if not response_obj.failure_scenarios and valid_finding_ids:
@@ -314,6 +344,31 @@ class GroqAnalyzer:
             ))
             rollback_conditions.append("p99 latency exceeds 3x baseline for more than 45 seconds")
 
+        # 3b. Minor Dependency / Low Evidence Scenarios
+        minor_deps = [f for f in dep_findings if "minor" in f.type]
+        if minor_deps and not major_deps and not db_findings and not infra_findings and not traffic_findings:
+            overall = "low"
+            pkg_names = [f.metadata.get("package", "dependency") for f in minor_deps]
+            pkg_str = ", ".join(pkg_names[:3])
+            scenarios.append(FailureScenario(
+                title=f"Dependency Compatibility Uncertainty ({pkg_str})",
+                severity="low",
+                confidence=0.75,
+                evidence_ids=[f.id for f in minor_deps],
+                failure_chain=[
+                    f"Deployment introduces minor dependency update ({pkg_str})",
+                    "Application services initialize normally under existing configuration",
+                    "Minor behavioral or deprecation discrepancies may surface under specific edge-case inputs"
+                ],
+                affected_services=["Backend API"],
+                blast_radius="Low expected blast radius. Scoped to edge-case requests touching updated library methods.",
+                why_tests_may_miss_it=(
+                    "Minor dependency updates generally maintain backwards compatibility and pass standard test suites. "
+                    "Evidence does not establish specific runtime failure paths or breaking API incompatibilities."
+                ),
+                mitigation="Deploy via standard automated canary with error rate monitoring."
+            ))
+
         # Default fallback if no specific scenario matched
         if not scenarios:
             scenarios.append(FailureScenario(
@@ -351,7 +406,7 @@ class GroqAnalyzer:
                 "Phase 3: Route 10% traffic to canary pod for 10 minutes while observing readiness probe stability.",
                 "Phase 4: Promote to 100% capacity once health checks and latency benchmarks confirm baseline parity."
             ]
-        elif dep_findings or traffic_findings:
+        elif major_deps or traffic_findings:
             strategy_name = "Canary with Circuit-Breaking & Rate Limiting"
             steps = [
                 "Phase 1: Deploy to staging under simulated 200 QPS load test to observe socket latency and thread saturation.",
@@ -381,12 +436,20 @@ class GroqAnalyzer:
         rollback_conditions.append("HTTP 5xx error rate exceeds 1.0% over a 60-second window during canary rollout")
         rollback_conditions.append("p99 latency doubles compared to pre-deployment baseline for > 90 seconds")
 
-        summary = (
-            f"Deployment candidate exhibits {overall.upper()} production risk based on {len(findings)} deterministic findings. "
-            f"Key risk drivers include "
-            + (", ".join([f.type.replace('_', ' ') for f in findings[:4]]) if findings else "minor code updates")
-            + ". Proceeding requires a structured rollout with strict canary verification."
-        )
+        if findings and all(f.type == "minor_dependency_upgrade" for f in findings):
+            overall = "low"
+            summary = (
+                f"Deployment candidate exhibits LOW observed risk based on {len(findings)} minor dependency change(s). "
+                "Dependency compatibility uncertainty exists, but deterministic evidence is insufficient to identify a specific "
+                "production failure mechanism. Standard automated canary verification recommended."
+            )
+        else:
+            summary = (
+                f"Deployment candidate exhibits {overall.upper()} production risk based on {len(findings)} deterministic findings. "
+                f"Key risk drivers include "
+                + (", ".join([f.type.replace('_', ' ') for f in findings[:4]]) if findings else "minor code updates")
+                + ". Proceeding requires a structured rollout with strict canary verification."
+            )
 
         return GroqAnalysisResponse(
             overall_assessment=overall,

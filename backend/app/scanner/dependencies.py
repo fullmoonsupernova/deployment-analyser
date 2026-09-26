@@ -99,6 +99,7 @@ def scan_dependency_changes(files: List[Dict[str, Any]]) -> List[RiskFinding]:
             is_db = pkg in DB_PACKAGES
             is_fw = pkg in FRAMEWORK_PACKAGES
             is_cloud = pkg in CLOUD_PACKAGES
+            domain = "payment" if is_payment else ("auth" if is_auth else ("database" if is_db else ("framework" if is_fw else ("cloud" if is_cloud else "general"))))
 
             if old_ver and old_sem and new_sem:
                 old_maj, _, _ = old_sem
@@ -129,7 +130,7 @@ def scan_dependency_changes(files: List[Dict[str, Any]]) -> List[RiskFinding]:
                             "Major upgrades introduce breaking API changes, parameter restructuring, or deprecated lifecycle methods. "
                             "May pass mocked unit tests but fail at runtime."
                         ),
-                        metadata={"package": pkg, "old_version": old_ver, "new_version": new_ver, "is_breaking_candidate": True}
+                        metadata={"package": pkg, "old_version": old_ver, "new_version": new_ver, "is_breaking_candidate": True, "domain": domain, "is_major": True}
                     ))
                     finding_counter += 1
                 elif new_sem > old_sem:
@@ -144,7 +145,7 @@ def scan_dependency_changes(files: List[Dict[str, Any]]) -> List[RiskFinding]:
                         file=filename,
                         changed=True,
                         description=f"Dependency '{pkg}' upgraded from {old_ver} to {new_ver}.",
-                        metadata={"package": pkg, "old_version": old_ver, "new_version": new_ver}
+                        metadata={"package": pkg, "old_version": old_ver, "new_version": new_ver, "domain": domain, "is_major": False}
                     ))
                     finding_counter += 1
 

@@ -29,6 +29,18 @@ Every failure scenario MUST reference one or more evidence IDs from the supplied
 Do not invent evidence.
 
 The output must be practical for an SRE or release engineer.
+
+CRITICAL RULES FOR DEPENDENCY RISK REASONING:
+- Do NOT infer that a changed dependency is actually used by a specific runtime path unless the deterministic evidence explicitly establishes that relationship.
+- A dependency version change alone is INSUFFICIENT to claim a specific runtime failure mechanism such as TemplateSyntaxError, database failure, authentication failure, payment failure, connection failure, or API incompatibility.
+- When the evidence only establishes a dependency version change (especially minor or patch updates), describe the risk as dependency compatibility uncertainty rather than inventing a specific runtime failure mechanism.
+- Distinguish between:
+  1. Evidence: e.g., "Jinja2 changed from 3.1.2 to 3.1.3."
+  2. Reasonable inference: e.g., "A dependency change introduces some compatibility risk."
+  3. Unsupported speculation (FORBIDDEN): e.g., "The new Jinja2 version will cause TemplateSyntaxError on production template-rendering endpoints."
+- Never assert specific unevidenced exceptions like TemplateSyntaxError unless deterministic evidence proves that code path was changed and triggers it.
+- If the only findings are minor or patch dependency updates with no infrastructure or database changes, assess the overall risk as "low", explicitly state that evidence is insufficient to identify a specific runtime failure mechanism, and recommend standard canary verification.
+
 Be concise and token-efficient:
 - Identify the 1 to 3 most critical failure scenarios.
 - Keep each failure chain to 3 to 4 clear sequential steps.
