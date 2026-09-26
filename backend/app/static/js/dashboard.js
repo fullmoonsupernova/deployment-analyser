@@ -3,6 +3,9 @@
 let activeScenarioIndex = 0;
 let cachedTopologyNodes = [];
 let cachedTopologyEdges = [];
+let currentAnalysisData = null;
+let activeCategoryFilter = "all";
+let activeSearchQuery = "";
 
 document.addEventListener("DOMContentLoaded", () => {
   setupTabs();
@@ -34,6 +37,9 @@ function renderDashboard(data) {
   if (!dashSection) return;
   dashSection.classList.remove("hidden");
 
+  // Save globally for exports & quick actions
+  currentAnalysisData = data;
+
   // 1. Repo Metadata
   const repo = data.repository || {};
   const repoTitle = document.getElementById("dashRepoTitle");
@@ -57,11 +63,13 @@ function renderDashboard(data) {
     candSha.title = data.deployment_commit;
   }
 
-  // 3. Risk Banner & Confidence
+  // 3. Risk Gauge, Verdict Card & Observability Pillars
+  renderRiskGauge(data.deterministic_risk_score, data.deterministic_risk_level);
+  renderSreVerdict(data);
+  renderObservabilityPillars(data);
+
   const riskBadge = document.getElementById("riskLevelBadge");
   const riskHeadline = document.getElementById("riskHeadline");
-  const riskConfText = document.getElementById("riskConfidenceText");
-  const riskScorePill = document.getElementById("riskScorePill");
   const cacheBadge = document.getElementById("cacheBadge");
 
   const level = (data.deterministic_risk_level || "MEDIUM").toLowerCase();
@@ -69,15 +77,9 @@ function renderDashboard(data) {
     riskBadge.className = `risk-badge ${level}`;
     riskBadge.textContent = `${data.deterministic_risk_level} RISK`;
   }
-  if (riskScorePill) {
-    riskScorePill.textContent = `Deterministic Score: ${data.deterministic_risk_score} / 100`;
-  }
   if (riskHeadline) {
     const factors = data.significant_factors_count || 0;
-    riskHeadline.textContent = `${factors} significant production-risk factor${factors === 1 ? '' : 's'} detected`;
-  }
-  if (riskConfText) {
-    riskConfText.textContent = `Analysis confidence: ${data.analysis_confidence} — ${data.confidence_reason}`;
+    riskHeadline.textContent = `${factors} significant risk factor${factors === 1 ? '' : 's'}`;
   }
   if (cacheBadge) {
     if (data.cached) {
@@ -390,10 +392,12 @@ function highlightTopologyServices(affectedServices) {
         box.setAttribute("stroke-width", "3");
         box.setAttribute("fill", "rgba(239, 68, 68, 0.2)");
         box.setAttribute("filter", "url(#glow)");
+        box.classList.add("pulsing-danger");
       } else {
         box.removeAttribute("filter");
         box.setAttribute("stroke-width", "1.5");
         box.setAttribute("fill", "#111827");
+        box.classList.remove("pulsing-danger");
       }
     }
   });
@@ -411,34 +415,72 @@ function setupFindingsFilters() {
     btn.addEventListener("click", () => {
       filterBtns.forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-      const category = btn.getAttribute("data-filter");
-      filterFindingsByCategory(category);
+      activeCategoryFilter = btn.getAttribute("data-filter") || "all";
+      applyFindingsFilter();
     });
   });
+
+  const searchInput = document.getElementById("findingSearchInput");
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => {
+      activeSearchQuery = (e.target.value || "").trim().toLowerCase();
+      applyFindingsFilter();
+    });
+  }
 }
 
 function renderFindings(findings) {
-  allFindingsData = findings;
-  filterFindingsByCategory("all");
+  allFindingsData = findings || [];
+  activeCategoryFilter = "all";
+  activeSearchQuery = "";
+  const searchInput = document.getElementById("findingSearchInput");
+  if (searchInput) searchInput.value = "";
+  const filterBtns = document.querySelectorAll(".btn-filter");
+  filterBtns.forEach(b => {
+    b.classList.toggle("active", b.getAttribute("data-filter") === "all");
+  });
+  applyFindingsFilter();
 }
 
-function filterFindingsByCategory(category) {
+function applyFindingsFilter() {
   const container = document.getElementById("findingsGrid");
   const countLabel = document.getElementById("filteredCountLabel");
   if (!container) return;
 
-  const filtered = category === "all" 
-    ? allFindingsData 
-    : allFindingsData.filter(f => f.category.toLowerCase() === category.toLowerCase());
+  const filtered = allFindingsData.filter(f => {
+    if (activeCategoryFilter !== "all" && f.category.toLowerCase() !== activeCategoryFilter.toLowerCase()) {
+      return false;
+    }
+    if (activeSearchQuery) {
+      const desc = (f.description || "").toLowerCase();
+      const evid = (f.evidence || "").toLowerCase();
+      const file = (f.file || "").toLowerCase();
+      const type = (f.type || "").toLowerCase();
+      const cat = (f.category || "").toLowerCase();
+      const meta = JSON.stringify(f.metadata || {}).toLowerCase();
+      const matches = desc.includes(activeSearchQuery) ||
+                      evid.includes(activeSearchQuery) ||
+                      file.includes(activeSearchQuery) ||
+                      type.includes(activeSearchQuery) ||
+                      cat.includes(activeSearchQuery) ||
+                      meta.includes(activeSearchQuery);
+      if (!matches) return false;
+    }
+    return true;
+  });
 
   if (countLabel) {
-    countLabel.textContent = `Showing ${filtered.length} of ${allFindingsData.length} findings`;
+    if (activeSearchQuery || activeCategoryFilter !== "all") {
+      countLabel.textContent = `Showing ${filtered.length} of ${allFindingsData.length} findings`;
+    } else {
+      countLabel.textContent = `Showing all ${allFindingsData.length} findings`;
+    }
   }
 
   container.innerHTML = "";
 
   if (filtered.length === 0) {
-    container.innerHTML = `<div class="chain-viewer-placeholder">No findings in this category.</div>`;
+    container.innerHTML = `<div class="chain-viewer-placeholder">No matching findings found. Try a different keyword or category.</div>`;
     return;
   }
 
@@ -595,4 +637,308 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+/* =========================================================================
+   SRE CONTROL ROOM COMPONENTS (GAUGE, VERDICT, OBSERVABILITY)
+   ========================================================================= */
+
+function renderRiskGauge(score, level) {
+  const progressCircle = document.getElementById("gaugeProgress");
+  const valueText = document.getElementById("gaugeValue");
+  const numScore = Math.max(0, Math.min(100, Number(score) || 0));
+
+  // SVG circle r=50 -> Circumference = 2 * pi * 50 ~= 314.159
+  const circumference = 314.16;
+  const offset = circumference * (1 - numScore / 100);
+
+  if (progressCircle) {
+    progressCircle.style.strokeDasharray = `${circumference}`;
+    const normLevel = (level || "MEDIUM").toLowerCase();
+    if (normLevel === "critical") {
+      progressCircle.style.stroke = "#ef4444";
+    } else if (normLevel === "high") {
+      progressCircle.style.stroke = "#f97316";
+    } else if (normLevel === "medium") {
+      progressCircle.style.stroke = "#eab308";
+    } else {
+      progressCircle.style.stroke = "#10b981";
+    }
+
+    setTimeout(() => {
+      progressCircle.style.strokeDashoffset = `${offset}`;
+    }, 50);
+  }
+
+  if (valueText) {
+    let current = 0;
+    const duration = 750;
+    const startTime = performance.now();
+
+    function countStep(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      current = Math.round(ease * numScore);
+      valueText.textContent = current;
+      if (progress < 1) {
+        requestAnimationFrame(countStep);
+      } else {
+        valueText.textContent = numScore;
+      }
+    }
+    requestAnimationFrame(countStep);
+  }
+}
+
+function renderSreVerdict(data) {
+  const card = document.getElementById("sreVerdictCard");
+  const icon = document.getElementById("verdictIcon");
+  const title = document.getElementById("verdictTitle");
+  const desc = document.getElementById("verdictDesc");
+  const rolloutTag = document.getElementById("verdictRolloutTag");
+  const canaryTag = document.getElementById("verdictCanaryTag");
+
+  const level = (data.deterministic_risk_level || "MEDIUM").toUpperCase();
+  const factors = data.significant_factors_count || 0;
+  const strategy = data.ai_analysis?.rollout_strategy?.strategy || "Canary";
+
+  if (!card) return;
+
+  card.className = "verdict-card";
+
+  if (level === "CRITICAL") {
+    card.classList.add("verdict-critical");
+    if (icon) icon.textContent = "🛑";
+    if (title) title.textContent = "DEPLOYMENT BLOCKED";
+    if (desc) desc.textContent = `${factors} critical hazard signals detected (destructive schema, single replica, or breaking contracts). Hard gate active: requires Senior SRE sign-off and multi-stage migration.`;
+    if (rolloutTag) rolloutTag.textContent = "Multi-Stage Expand/Contract";
+    if (canaryTag) canaryTag.textContent = "Deployment Gated";
+  } else if (level === "HIGH") {
+    card.classList.add("verdict-high");
+    if (icon) icon.textContent = "⚠️";
+    if (title) title.textContent = "MANDATORY CANARY";
+    if (desc) desc.textContent = `${factors} high-impact production risk factors identified. Automated direct release rejected. Gated canary rollout with automated rollback triggers required.`;
+    if (rolloutTag) rolloutTag.textContent = `Strategy: ${strategy.toUpperCase()}`;
+    if (canaryTag) canaryTag.textContent = "Automated Rollback Active";
+  } else if (level === "MEDIUM") {
+    card.classList.add("verdict-medium");
+    if (icon) icon.textContent = "🛡️";
+    if (title) title.textContent = "GUARDED ROLLOUT";
+    if (desc) desc.textContent = `Moderate production risk detected across ${factors} signal${factors === 1 ? '' : 's'}. Proceed with canary traffic split and real-time metric thresholds.`;
+    if (rolloutTag) rolloutTag.textContent = `Strategy: ${strategy.toUpperCase()}`;
+    if (canaryTag) canaryTag.textContent = "Metric Gating Active";
+  } else {
+    card.classList.add("verdict-low");
+    if (icon) icon.textContent = "✅";
+    if (title) title.textContent = "STANDARD CANARY APPROVED";
+    if (desc) desc.textContent = `Low production release risk. No breaking architectural or destructive changes detected. Safe for automated deployment pipeline with standard canary verification.`;
+    if (rolloutTag) rolloutTag.textContent = "Standard Progressive Rollout";
+    if (canaryTag) canaryTag.textContent = "Health Probes Active";
+  }
+}
+
+function renderObservabilityPillars(data) {
+  const pCode = document.getElementById("pillarCode");
+  const pDep = document.getElementById("pillarDep");
+  const pInfra = document.getElementById("pillarInfra");
+  const pConfig = document.getElementById("pillarConfig");
+  const confBadge = document.getElementById("confidenceBadge");
+  const confText = document.getElementById("riskConfidenceText");
+
+  const findings = data.findings || [];
+  const hasCode = findings.some(f => f.category === "code" || f.category === "traffic");
+  const hasDep = findings.some(f => f.category === "dependency");
+  const hasInfra = findings.some(f => f.category === "infrastructure" || f.category === "external_service");
+  const hasConfig = findings.some(f => f.category === "configuration" || f.category === "database");
+
+  if (pCode) pCode.classList.toggle("active", hasCode);
+  if (pDep) pDep.classList.toggle("active", hasDep);
+  if (pInfra) pInfra.classList.toggle("active", hasInfra);
+  if (pConfig) pConfig.classList.toggle("active", hasConfig);
+
+  const conf = (data.analysis_confidence || "HIGH").toUpperCase();
+  if (confBadge) {
+    confBadge.className = `confidence-badge ${conf.toLowerCase()}`;
+    confBadge.textContent = `CONFIDENCE: ${conf}`;
+  }
+
+  if (confText) {
+    confText.textContent = data.confidence_reason || "Deterministic AST & manifest coverage verified.";
+  }
+}
+
+/* =========================================================================
+   QUICK ACTION TOOLBAR: PR MARKDOWN, SRE REPORT, EVIDENCE JSON
+   ========================================================================= */
+
+function copyPrMarkdown() {
+  if (!currentAnalysisData) return;
+  const d = currentAnalysisData;
+  const level = d.deterministic_risk_level || "MEDIUM";
+  const score = d.deterministic_risk_score || 0;
+  const confidence = d.analysis_confidence || "HIGH";
+  const factors = d.significant_factors_count || 0;
+  const repoName = d.repository?.full_name || "Repository";
+  const baseSha = (d.baseline_commit || "0000000").substring(0, 8);
+  const candSha = (d.deployment_commit || "0000000").substring(0, 8);
+  const scenarios = d.ai_analysis?.failure_scenarios || [];
+  const strategy = d.ai_analysis?.rollout_strategy?.strategy || "Guarded Canary";
+  const steps = d.ai_analysis?.rollout_strategy?.steps || [];
+  const rollbacks = d.ai_analysis?.rollback_conditions || [];
+
+  let verdictEmoji = "🛑";
+  let verdictText = "DEPLOYMENT BLOCKED";
+  if (level === "CRITICAL") {
+    verdictEmoji = "🛑";
+    verdictText = "DEPLOYMENT BLOCKED";
+  } else if (level === "HIGH") {
+    verdictEmoji = "⚠️";
+    verdictText = "MANDATORY CANARY GATING";
+  } else if (level === "MEDIUM") {
+    verdictEmoji = "🛡️";
+    verdictText = "GUARDED ROLLOUT";
+  } else {
+    verdictEmoji = "✅";
+    verdictText = "STANDARD CANARY APPROVED";
+  }
+
+  let md = `## ${verdictEmoji} SRE Production Deployment Risk Assessment\n\n`;
+  md += `**Repository**: \`${repoName}\` (\`${baseSha}\` → \`${candSha}\`)\n`;
+  md += `**Release Verdict**: **${verdictText}**\n`;
+  md += `**Deterministic Risk Score**: **${score}/100** (${level} RISK) | **Confidence**: **${confidence}**\n`;
+  md += `**Signals Detected**: ${factors} significant production-risk factors\n\n`;
+  
+  md += `### 📋 Executive Summary\n${d.ai_analysis?.summary || "Analysis completed based on deterministic code, infrastructure, and dependency changes."}\n\n`;
+
+  if (scenarios.length > 0) {
+    md += `### ⚡ Production Failure Modes\n`;
+    scenarios.forEach((sc, i) => {
+      md += `${i + 1}. **${sc.title}** (${sc.severity.toUpperCase()} RISK - ${Math.round(sc.confidence * 100)}% conf)\n`;
+      md += `   - **Blast Radius**: ${sc.blast_radius || "Application level"}\n`;
+      md += `   - **Why Tests Miss It**: ${sc.why_tests_may_miss_it || "N/A"}\n`;
+      md += `   - **Mitigation**: ${sc.mitigation || "Follow phased rollout"}\n`;
+    });
+    md += `\n`;
+  }
+
+  md += `### 🚀 Recommended Rollout Strategy (\`${strategy.toUpperCase()}\`)\n`;
+  steps.forEach((step, i) => {
+    md += `${i + 1}. ${step}\n`;
+  });
+  md += `\n`;
+
+  if (rollbacks.length > 0) {
+    md += `### 🛑 Automated Rollback Triggers\n`;
+    rollbacks.forEach(rb => {
+      md += `- ${rb}\n`;
+    });
+    md += `\n`;
+  }
+
+  md += `---\n*Generated by SRE Production Deployment Risk Analyzer (BITnBUILD)*\n`;
+
+  navigator.clipboard.writeText(md).then(() => {
+    const btn = document.getElementById("copyPrMarkdownBtn");
+    if (btn) {
+      const origHtml = btn.innerHTML;
+      btn.classList.add("copied");
+      btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg><span>Copied PR Review! ✓</span>`;
+      setTimeout(() => {
+        btn.classList.remove("copied");
+        btn.innerHTML = origHtml;
+      }, 2000);
+    }
+  }).catch(err => {
+    console.error("Clipboard write failed:", err);
+  });
+}
+
+function exportMarkdownReport() {
+  if (!currentAnalysisData) return;
+  const d = currentAnalysisData;
+  const repoName = (d.repository?.name || "deployment").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const filename = `sre-risk-report-${repoName}.md`;
+
+  let md = `# SRE Production Deployment Risk Report\n\n`;
+  md += `**Generated**: ${new Date().toUTCString()}\n`;
+  md += `**Repository**: ${d.repository?.full_name || "Unknown"}\n`;
+  md += `**Baseline Commit**: \`${d.baseline_commit || "N/A"}\`\n`;
+  md += `**Candidate Commit**: \`${d.deployment_commit || "N/A"}\`\n`;
+  md += `**Deterministic Score**: ${d.deterministic_risk_score} / 100 (${d.deterministic_risk_level} RISK)\n`;
+  md += `**Confidence**: ${d.analysis_confidence} (${d.confidence_reason || ""})\n\n`;
+
+  md += `## 1. Executive Summary\n\n`;
+  md += `${d.ai_analysis?.summary || "No summary available."}\n\n`;
+
+  md += `## 2. Production Failure Cascade Scenarios\n\n`;
+  (d.ai_analysis?.failure_scenarios || []).forEach((sc, i) => {
+    md += `### Scenario ${i + 1}: ${sc.title} [${sc.severity.toUpperCase()}]\n\n`;
+    md += `- **Confidence**: ${(sc.confidence * 100).toFixed(0)}%\n`;
+    md += `- **Affected Services**: ${(sc.affected_services || []).join(", ") || "None"}\n`;
+    md += `- **Blast Radius**: ${sc.blast_radius || "N/A"}\n\n`;
+    md += `#### Cascade Sequence:\n`;
+    (sc.failure_chain || []).forEach((step, sIdx) => {
+      md += `${sIdx + 1}. ${step}\n`;
+    });
+    md += `\n**Why Unit/Staging Tests Miss It**:\n${sc.why_tests_may_miss_it || "N/A"}\n\n`;
+    md += `**Mitigation**:\n${sc.mitigation || "Follow safe rollout"}\n\n`;
+  });
+
+  md += `## 3. Detected Signals & Findings\n\n`;
+  (d.findings || []).forEach((f, idx) => {
+    md += `### Finding ${idx + 1}: [${f.category.toUpperCase()}] ${f.type} (${f.severity_hint.toUpperCase()})\n`;
+    md += `- **Description**: ${f.description}\n`;
+    md += `- **Location**: \`${f.file}${f.line ? `:${f.line}` : ""}\`\n`;
+    if (f.evidence) {
+      md += `\`\`\`\n${f.evidence}\n\`\`\`\n`;
+    }
+    md += `\n`;
+  });
+
+  md += `## 4. Rollout Strategy & Safe Progression\n\n`;
+  md += `**Recommended Strategy**: ${d.ai_analysis?.rollout_strategy?.strategy?.toUpperCase() || "CANARY"}\n\n`;
+  (d.ai_analysis?.rollout_strategy?.steps || []).forEach((step, idx) => {
+    md += `${idx + 1}. ${step}\n`;
+  });
+  md += `\n`;
+
+  md += `## 5. Rollback Conditions & Telemetry Alerts\n\n`;
+  md += `### Rollback Triggers:\n`;
+  (d.ai_analysis?.rollback_conditions || []).forEach(rb => {
+    md += `- 🛑 ${rb}\n`;
+  });
+  md += `\n### Key Observability Metrics:\n`;
+  (d.ai_analysis?.monitoring || []).forEach(m => {
+    md += `- **${m.metric}**: ${m.reason}\n`;
+  });
+
+  const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function copyEvidenceJson() {
+  if (!currentAnalysisData) return;
+  const jsonStr = JSON.stringify(currentAnalysisData, null, 2);
+  navigator.clipboard.writeText(jsonStr).then(() => {
+    const btn = document.getElementById("copyJsonBtn");
+    if (btn) {
+      const origHtml = btn.innerHTML;
+      btn.classList.add("copied");
+      btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg><span>Copied JSON! ✓</span>`;
+      setTimeout(() => {
+        btn.classList.remove("copied");
+        btn.innerHTML = origHtml;
+      }, 2000);
+    }
+  }).catch(err => {
+    console.error("JSON copy failed:", err);
+  });
 }

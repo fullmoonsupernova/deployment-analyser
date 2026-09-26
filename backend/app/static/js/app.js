@@ -1,6 +1,8 @@
 // SRE Production Deployment Risk Analyzer - Main App Controller
 
 let currentAnalysisData = null;
+let lastAnalysisRequest = null;
+let timerInterval = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("analyzeForm");
@@ -24,9 +26,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Handle 1-Click Demo Scenarios
+  // Handle 1-Click Demo Scenarios & Live Repos
   scenarioBtns.forEach(btn => {
     btn.addEventListener("click", async () => {
+      const liveRepo = btn.getAttribute("data-repo");
+      if (liveRepo) {
+        const repoInput = document.getElementById("repoUrl");
+        if (repoInput) repoInput.value = liveRepo;
+        await triggerAnalysis("/api/analyze", {
+          repo_url: liveRepo,
+          bypass_cache: false
+        });
+        return;
+      }
+
       const scenarioId = btn.getAttribute("data-scenario");
       if (!scenarioId) return;
 
@@ -41,6 +54,7 @@ document.addEventListener("DOMContentLoaded", () => {
 async function triggerAnalysis(endpoint, payload) {
   dismissError();
   showLoading();
+  lastAnalysisRequest = { endpoint, payload };
 
   const stepOrder = [
     "step-connect",
@@ -76,6 +90,17 @@ async function triggerAnalysis(endpoint, payload) {
     }
   }, 220);
 
+  // Live Elapsed Timer
+  const timerEl = document.getElementById("stepperTimer");
+  const startTime = Date.now();
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    if (timerEl) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      timerEl.textContent = `Elapsed: ${elapsed}s`;
+    }
+  }, 100);
+
   try {
     const resp = await fetch(endpoint, {
       method: "POST",
@@ -84,6 +109,7 @@ async function triggerAnalysis(endpoint, payload) {
     });
 
     clearInterval(stepperInterval);
+    if (timerInterval) clearInterval(timerInterval);
 
     // Complete all steps
     stepOrder.forEach(id => {
@@ -110,13 +136,21 @@ async function triggerAnalysis(endpoint, payload) {
       if (dashEl) {
         dashEl.scrollIntoView({ behavior: "smooth", block: "start" });
       }
-    }, 400);
+    }, 350);
 
   } catch (err) {
     clearInterval(stepperInterval);
+    if (timerInterval) clearInterval(timerInterval);
     hideLoading();
     showError("Deployment Analysis Failed", err.message);
   }
+}
+
+async function reanalyzeCurrent() {
+  if (!lastAnalysisRequest) return;
+  const { endpoint, payload } = lastAnalysisRequest;
+  const newPayload = { ...payload, bypass_cache: true };
+  await triggerAnalysis(endpoint, newPayload);
 }
 
 function showLoading() {
