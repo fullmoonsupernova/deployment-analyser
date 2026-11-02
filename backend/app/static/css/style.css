@@ -1,4 +1,4 @@
-/* SRE Production Deployment Risk Analyzer - Dark Theme */
+/* Repository Security & Deployment Risk Analyzer - Dark Theme */
 :root {
   --bg-deep: #0a0c10;
   --bg-surface: #11141c;
@@ -1608,7 +1608,7 @@ input[type="text"]:focus {
   word-break: break-all;
 }
 
-/* Tab 4: Incidents Grid */
+/* Tab 5: Incidents Grid */
 .incidents-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
@@ -1666,7 +1666,82 @@ input[type="text"]:focus {
   gap: 0.35rem;
 }
 
-/* Tab 5: Rollout Strategy */
+.badge-medium {
+  background-color: var(--color-medium-bg);
+  color: var(--color-medium);
+  border: 1px solid var(--color-medium-border);
+}
+
+.badge-low {
+  background-color: var(--color-low-bg);
+  color: var(--color-low);
+  border: 1px solid var(--color-low-border);
+}
+
+.security-scan-summary {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  color: var(--text-muted);
+}
+
+.security-summary-heading,
+.security-finding-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-bottom: 0.65rem;
+}
+
+.security-summary-heading strong,
+.security-ai-summary strong {
+  color: var(--text-main);
+}
+
+.security-ai-summary {
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+}
+
+.security-ai-summary small {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--text-dim);
+}
+
+.security-findings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  gap: 1rem;
+}
+
+.security-finding-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 1rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.security-finding-card h4 {
+  color: var(--text-main);
+  margin-bottom: 0.45rem;
+}
+
+.security-finding-card p + p {
+  margin-top: 0.35rem;
+}
+
+.security-finding-card strong {
+  color: var(--text-main);
+}
+
+/* Tab 6: Rollout Strategy */
 .rollout-strategy-header {
   margin-bottom: 1.25rem;
 }
@@ -1728,7 +1803,7 @@ input[type="text"]:focus {
   line-height: 1.5;
 }
 
-/* Tab 6: Monitoring & Rollback */
+/* Tab 7: Monitoring & Rollback */
 .monitoring-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1825,7 +1900,7 @@ input[type="text"]:focus {
   line-height: 1.4;
 }
 
-/* Tab 7: Evidence JSON */
+/* Tab 8: Evidence JSON */
 .evidence-header-flex {
   display: flex;
   justify-content: space-between;
@@ -1908,4 +1983,281 @@ input[type="text"]:focus {
 /* Helpers */
 .hidden {
   display: none !important;
+}
+
+/* Repository security and deployment analysis landing page */
+body.sre-dark-theme {
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(37, 99, 235, 0.13), transparent 34rem),
+    radial-gradient(ellipse at 88% 12%, rgba(16, 185, 129, 0.07), transparent 30rem),
+    var(--bg-deep);
+}
+
+.navbar {
+  background: rgba(12, 16, 24, 0.88);
+  border-bottom-color: rgba(148, 163, 184, 0.13);
+  backdrop-filter: blur(16px);
+}
+
+.brand-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #2563eb, #0d9488);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.24);
+}
+
+.brand-title {
+  font-family: var(--font-sans);
+  font-size: 0.91rem;
+  letter-spacing: 0.045em;
+}
+
+.brand-sub {
+  text-transform: none;
+  letter-spacing: 0.015em;
+  font-size: 0.75rem;
+}
+
+.nav-badges {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.badge {
+  border-radius: 999px;
+}
+
+.main-wrapper {
+  max-width: 1280px;
+  padding-top: 3.25rem;
+}
+
+.hero-section {
+  margin-bottom: 2rem;
+}
+
+.hero-header {
+  max-width: 800px;
+  margin-bottom: 1.65rem;
+}
+
+.hero-badge {
+  color: #a5f3fc;
+  background: rgba(8, 145, 178, 0.11);
+  border-color: rgba(34, 211, 238, 0.24);
+  padding: 0.4rem 0.85rem;
+  letter-spacing: 0.075em;
+}
+
+.hero-title {
+  font-size: clamp(2.35rem, 5vw, 3.75rem);
+  line-height: 1.08;
+  letter-spacing: -0.055em;
+  margin-bottom: 0.9rem;
+  background: linear-gradient(110deg, #fff 20%, #cbd5e1 60%, #93c5fd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-subtitle {
+  max-width: 690px;
+  margin: 0 auto;
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  max-width: 850px;
+  margin: 0 auto 1.4rem;
+}
+
+.capability-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 1rem 1.1rem;
+  text-align: left;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(22, 27, 38, 0.94), rgba(17, 20, 28, 0.88));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.13);
+}
+
+.capability-security {
+  border-color: rgba(45, 212, 191, 0.22);
+}
+
+.capability-deployment {
+  border-color: rgba(96, 165, 250, 0.23);
+}
+
+.capability-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  color: #5eead4;
+  background: rgba(20, 184, 166, 0.12);
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  border-radius: 10px;
+}
+
+.capability-deployment .capability-icon {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.13);
+  border-color: rgba(96, 165, 250, 0.2);
+}
+
+.capability-card h2 {
+  margin: 0.05rem 0 0.2rem;
+  color: var(--text-main);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.capability-card p {
+  color: var(--text-muted);
+  font-size: 0.77rem;
+  line-height: 1.5;
+}
+
+.input-card {
+  border-color: rgba(148, 163, 184, 0.16);
+  border-radius: 16px;
+  padding: clamp(1.1rem, 3vw, 1.75rem);
+  background: linear-gradient(145deg, rgba(19, 24, 34, 0.98), rgba(15, 19, 28, 0.98));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+}
+
+.form-group label {
+  color: #cbd5e1;
+  font-size: 0.73rem;
+  letter-spacing: 0.065em;
+}
+
+input[type="text"] {
+  min-height: 46px;
+  border-color: rgba(148, 163, 184, 0.18);
+  background-color: rgba(10, 14, 22, 0.78);
+}
+
+input[type="text"]::placeholder {
+  color: #64748b;
+}
+
+input[type="text"]:focus-visible,
+.btn:focus-visible,
+.btn-scenario:focus-visible,
+.btn-action:focus-visible {
+  outline: 2px solid #67e8f9;
+  outline-offset: 3px;
+}
+
+.btn-primary {
+  min-height: 46px;
+  background: linear-gradient(125deg, #2563eb, #0f766e);
+  border-color: rgba(125, 211, 252, 0.36);
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.22);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(125deg, #1d4ed8, #0f766e);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.32);
+}
+
+.baseline-disclaimer {
+  border-radius: 9px;
+  line-height: 1.55;
+}
+
+.scenarios-bar {
+  gap: 0.8rem;
+}
+
+.scenarios-label {
+  color: #94a3b8;
+  letter-spacing: 0.075em;
+}
+
+.btn-scenario {
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+}
+
+.footer {
+  border-top-color: rgba(148, 163, 184, 0.13);
+  background: rgba(12, 16, 24, 0.82);
+}
+
+@media (max-width: 760px) {
+  .navbar {
+    padding: 0.8rem 1rem;
+  }
+
+  .nav-container {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .nav-badges {
+    justify-content: flex-start;
+    gap: 0.45rem;
+  }
+
+  .badge {
+    font-size: 0.67rem;
+  }
+
+  .main-wrapper {
+    padding: 2.2rem 1rem 3rem;
+  }
+
+  .hero-title {
+    font-size: clamp(2.2rem, 10vw, 3.15rem);
+  }
+}
+
+@media (max-width: 560px) {
+  .capability-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .capability-card {
+    padding: 0.9rem;
+  }
+
+  .brand-title {
+    font-size: 0.82rem;
+  }
+
+  .hero-subtitle {
+    font-size: 0.9rem;
+  }
+
+  .input-card {
+    padding: 1rem;
+  }
+
+  .baseline-disclaimer {
+    align-items: flex-start;
+    font-size: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

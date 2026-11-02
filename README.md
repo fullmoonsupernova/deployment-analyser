@@ -1,8 +1,8 @@
-# SRE Production Deployment Risk Analyzer
+# Repository Security & Deployment Risk Analyzer
 
 > **"A deployment can pass unit tests, integration tests, security checks, and staging without any obvious problem, and still trigger a critical incident in production."**
 
-The **SRE Production Deployment Risk Analyzer** evaluates planned software releases against real production conditions. It analyzes code diffs, infrastructure manifests, database migrations, configuration shifts, dependency updates, and external service interactions to estimate deployment risk, model failure modes, and prescribe safer rollout strategies.
+The **Repository Security & Deployment Risk Analyzer** combines heuristic repository code-security scanning with production deployment-risk analysis. It reviews repository source for common security-risk patterns and compares code changes, infrastructure manifests, database migrations, configuration shifts, dependency updates, and external service interactions to estimate deployment risk, model failure modes, and prescribe safer rollout strategies.
 
 ---
 
@@ -96,6 +96,14 @@ cp .env.example .env
 | **Traffic Patterns** | `scanner/traffic.py` | Unbounded `SELECT *` without `LIMIT`, full ORM reads (`.all()`), missing pagination, retry storms. |
 | **Service Topology** | `scanner/services.py` | Inferred service dependency graph with confidence metrics and blast-radius tracing. |
 | **Incident Matcher** | `incidents/matcher.py` | Deterministic correlation against curated post-mortem incident archetypes (`database.json`). |
+
+### Repository Code Security Scan
+
+For live GitHub repository analyses, the application also scans a bounded source snapshot at the selected deployment revision. Run it only against repositories you are authorized to assess. Public repositories can be analyzed without a token; if GitHub reports `Bad credentials` for the configured token, the app retries repository metadata without authentication and continues only if the repository is publicly readable. Private repositories require a valid `GITHUB_TOKEN` with read access. The scanner checks common source files for heuristic signals such as unsafe SQL construction, shell execution, unsafe deserialization, dynamic evaluation, disabled TLS verification, possible hardcoded credentials, unsafe HTML insertion, and dynamic outbound URLs.
+
+The scan is capped at 100 candidate files and 500 KB per file. Coverage limits, GitHub errors, and skipped files are surfaced in the report. Findings are indicators for manual review, not proof of exploitability or a guarantee that no vulnerabilities exist. A path changed by the deployment is identified as touched; this does not prove that the finding was introduced by that deployment. Demo fixtures do not fetch or scan a live repository.
+
+Source files are scanned locally by the application and are not sent to Groq. Groq security triage receives only opaque finding IDs, rule identifiers, severity, and confidence; it does not receive source text, file paths, or repository identity. The deployment-risk AI request likewise receives normalized finding metadata rather than source snippets.
 
 ---
 

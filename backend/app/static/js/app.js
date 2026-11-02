@@ -1,4 +1,4 @@
-// SRE Production Deployment Risk Analyzer - Main App Controller
+// Repository Security & Deployment Risk Analyzer - Main App Controller
 
 window.currentAnalysisData = null;
 let lastAnalysisRequest = null;
@@ -60,6 +60,7 @@ async function triggerAnalysis(endpoint, payload) {
     "step-connect",
     "step-baseline",
     "step-code",
+    "step-security",
     "step-dep",
     "step-infra",
     "step-db",
@@ -155,7 +156,7 @@ async function triggerAnalysis(endpoint, payload) {
     clearInterval(stepperInterval);
     if (timerInterval) clearInterval(timerInterval);
     hideLoading();
-    showError("Deployment Analysis Failed", err.message);
+    showError("Repository Analysis Failed", err.message);
   }
 }
 

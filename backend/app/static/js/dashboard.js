@@ -1,4 +1,4 @@
-// SRE Production Deployment Risk Analyzer - Dashboard & Visualization Controller
+// Repository Security & Deployment Risk Analyzer - Dashboard & Visualization Controller
 
 let activeScenarioIndex = 0;
 let cachedTopologyNodes = [];
@@ -116,6 +116,7 @@ function renderDashboard(data) {
   // 5. Update Tab Counts
   const scenarios = data.ai_analysis?.failure_scenarios || [];
   const findings = data.findings || [];
+  const securityScan = data.security_scan || {};
   const services = data.services || [];
   const incidents = data.historical_matches || [];
 
@@ -126,6 +127,8 @@ function renderDashboard(data) {
     if (countSv) countSv.textContent = services.length;
     const countFd = document.getElementById("countFindings");
     if (countFd) countFd.textContent = findings.length;
+    const countSecurity = document.getElementById("countSecurity");
+    if (countSecurity) countSecurity.textContent = (securityScan.findings || []).length;
     const countIn = document.getElementById("countIncidents");
     if (countIn) countIn.textContent = incidents.length;
   } catch (err) {
@@ -140,6 +143,7 @@ function renderDashboard(data) {
   try { renderScenarios(scenarios, findings); } catch (e) { console.error("renderScenarios error:", e); }
   try { renderTopologyGraph(cachedTopologyNodes, cachedTopologyEdges); } catch (e) { console.error("renderTopologyGraph error:", e); }
   try { renderFindings(findings); } catch (e) { console.error("renderFindings error:", e); }
+  try { renderSecurityScan(securityScan); } catch (e) { console.error("renderSecurityScan error:", e); }
   try { renderIncidents(incidents); } catch (e) { console.error("renderIncidents error:", e); }
   try { renderRolloutStrategy(data.ai_analysis?.rollout_strategy); } catch (e) { console.error("renderRolloutStrategy error:", e); }
   try { renderMonitoring(data.ai_analysis?.monitoring, data.ai_analysis?.rollback_conditions); } catch (e) { console.error("renderMonitoring error:", e); }
@@ -590,6 +594,58 @@ function renderIncidents(incidents) {
   });
 }
 
+function renderSecurityScan(report) {
+  const summary = document.getElementById("securityScanSummary");
+  const container = document.getElementById("securityFindingsGrid");
+  if (!summary || !container) return;
+
+  const status = (report.status || "not_checked").replace(/_/g, " ");
+  const ai = report.ai_triage || {};
+  summary.innerHTML = `
+    <div class="security-summary-heading">
+      <strong>Scan status: ${escapeHtml(status.toUpperCase())}</strong>
+      <span>${Number(report.files_scanned) || 0} / ${Number(report.candidates_total) || 0} candidate files scanned</span>
+    </div>
+    <p>${escapeHtml(report.message || "Repository-wide scan was not run.")}</p>
+    <div class="security-ai-summary">
+      <strong>Groq triage: ${escapeHtml((ai.status || "not run").replace(/_/g, " "))}</strong>
+      <p>${escapeHtml(ai.summary || ai.message || "No AI triage summary available.")}</p>
+      <small>Groq receives only rule IDs, severity, and confidence for triage—not source code, file paths, or repository identity.</small>
+    </div>
+  `;
+
+  container.innerHTML = "";
+  const findings = report.findings || [];
+  if (!findings.length) {
+    container.innerHTML = `<div class="chain-viewer-placeholder">No local security-pattern matches were reported.</div>`;
+    return;
+  }
+
+  const prioritized = new Set(ai.prioritized_finding_ids || []);
+  findings.forEach(finding => {
+    const card = document.createElement("article");
+    card.className = "security-finding-card";
+    const severity = (finding.severity || "unknown").toLowerCase();
+    const badge = severity === "critical" ? "badge-crit" :
+      severity === "high" ? "badge-high" :
+      severity === "medium" ? "badge-medium" : "badge-low";
+    card.innerHTML = `
+      <div class="security-finding-header">
+        <span class="sc-badge ${badge}">${escapeHtml(severity.toUpperCase())}</span>
+        <code>${escapeHtml(finding.rule_id || "SECURITY")}</code>
+        ${finding.changed_in_deployment ? '<span class="sc-tag">Path changed in deployment</span>' : ""}
+        ${prioritized.has(finding.id) ? '<span class="sc-tag">Groq prioritized</span>' : ""}
+      </div>
+      <h4>${escapeHtml(finding.title || "Security pattern match")}</h4>
+      <p>${escapeHtml(finding.description || "")}</p>
+      <p><strong>Location:</strong> ${escapeHtml(finding.file || "Unknown")}:${Number(finding.line) || 0}</p>
+      <p><strong>Confidence:</strong> ${Math.round((Number(finding.confidence) || 0) * 100)}%</p>
+      <p><strong>Suggested review:</strong> ${escapeHtml(finding.recommendation || "")}</p>
+    `;
+    container.appendChild(card);
+  });
+}
+
 function renderRolloutStrategy(strategyObj) {
   const badge = document.getElementById("strategyNameBadge");
   const container = document.getElementById("rolloutStepsContainer");
@@ -848,7 +904,7 @@ function copyPrMarkdown() {
     verdictText = "STANDARD CANARY APPROVED";
   }
 
-  let md = `## ${verdictEmoji} SRE Production Deployment Risk Assessment\n\n`;
+  let md = `## ${verdictEmoji} Repository Security & Deployment Risk Assessment\n\n`;
   md += `**Repository**: \`${repoName}\` (\`${baseSha}\` → \`${candSha}\`)\n`;
   md += `**Release Verdict**: **${verdictText}**\n`;
   md += `**Deterministic Risk Score**: **${score}/100** (${level} RISK) | **Confidence**: **${confidence}**\n`;
@@ -881,7 +937,7 @@ function copyPrMarkdown() {
     md += `\n`;
   }
 
-  md += `---\n*Generated by SRE Production Deployment Risk Analyzer (BITnBUILD)*\n`;
+  md += `---\n*Generated by Repository Security & Deployment Risk Analyzer (BITnBUILD)*\n`;
 
   navigator.clipboard.writeText(md).then(() => {
     const btn = document.getElementById("copyPrMarkdownBtn");
@@ -905,7 +961,7 @@ function exportMarkdownReport() {
   const repoName = (d.repository?.name || "deployment").replace(/[^a-zA-Z0-9_-]/g, "_");
   const filename = `sre-risk-report-${repoName}.md`;
 
-  let md = `# SRE Production Deployment Risk Report\n\n`;
+  let md = `# Repository Security & Deployment Risk Report\n\n`;
   md += `**Generated**: ${new Date().toUTCString()}\n`;
   md += `**Repository**: ${d.repository?.full_name || "Unknown"}\n`;
   md += `**Baseline Commit**: \`${d.baseline_commit || "N/A"}\`\n`;
@@ -941,14 +997,29 @@ function exportMarkdownReport() {
     md += `\n`;
   });
 
-  md += `## 4. Rollout Strategy & Safe Progression\n\n`;
+  const securityScan = d.security_scan || {};
+  md += `## 4. Repository Code Security Scan\n\n`;
+  md += `**Status**: ${securityScan.status || "not checked"} — ${securityScan.message || "No security scan report."}\n\n`;
+  md += `**Files scanned**: ${securityScan.files_scanned || 0} / ${securityScan.candidates_total || 0}\n\n`;
+  if (securityScan.ai_triage?.summary) {
+    md += `**Sanitized Groq triage**: ${securityScan.ai_triage.summary}\n\n`;
+  }
+  (securityScan.findings || []).forEach((finding, idx) => {
+    md += `${idx + 1}. **${finding.severity.toUpperCase()} — ${finding.title}** (${finding.rule_id})\n`;
+    md += `   - Location: \`${finding.file}:${finding.line}\`${finding.changed_in_deployment ? " (path changed in deployment)" : ""}\n`;
+    md += `   - ${finding.description}\n`;
+    md += `   - Recommendation: ${finding.recommendation}\n`;
+  });
+  md += `\n`;
+
+  md += `## 5. Rollout Strategy & Safe Progression\n\n`;
   md += `**Recommended Strategy**: ${d.ai_analysis?.rollout_strategy?.strategy?.toUpperCase() || "CANARY"}\n\n`;
   (d.ai_analysis?.rollout_strategy?.steps || []).forEach((step, idx) => {
     md += `${idx + 1}. ${step}\n`;
   });
   md += `\n`;
 
-  md += `## 5. Rollback Conditions & Telemetry Alerts\n\n`;
+  md += `## 6. Rollback Conditions & Telemetry Alerts\n\n`;
   md += `### Rollback Triggers:\n`;
   (d.ai_analysis?.rollback_conditions || []).forEach(rb => {
     md += `- 🛑 ${rb}\n`;

@@ -37,6 +37,32 @@ class HistoricalIncidentMatch(BaseModel):
     match_score: float
     matched_findings: List[str] = Field(default_factory=list)
 
+class SecurityFinding(BaseModel):
+    id: str
+    rule_id: str
+    severity: str
+    confidence: float
+    title: str
+    description: str
+    recommendation: str
+    file: str
+    line: int
+    changed_in_deployment: bool = False
+
+class SecurityAITriage(BaseModel):
+    status: str = "not_run"
+    summary: str = ""
+    prioritized_finding_ids: List[str] = Field(default_factory=list)
+    message: str = ""
+
+class SecurityScanReport(BaseModel):
+    status: str = "not_checked"
+    message: str = "Repository-wide security scan was not run for this analysis."
+    candidates_total: int = 0
+    files_scanned: int = 0
+    findings: List[SecurityFinding] = Field(default_factory=list)
+    ai_triage: SecurityAITriage = Field(default_factory=SecurityAITriage)
+
 class EvidencePackage(BaseModel):
     repository: Dict[str, Any]
     findings: List[RiskFinding]
@@ -86,6 +112,7 @@ class DeploymentAnalysisResult(BaseModel):
     services: List[ServiceNode]
     relationships: List[ServiceEdge]
     historical_matches: List[HistoricalIncidentMatch]
+    security_scan: SecurityScanReport = Field(default_factory=SecurityScanReport)
     ai_analysis: GroqAnalysisResponse
     cached: bool = False
     created_at: str

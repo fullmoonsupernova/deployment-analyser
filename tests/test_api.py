@@ -32,6 +32,7 @@ def test_analyze_scenario_endpoint():
             assert data["deterministic_risk_level"] in ["HIGH", "CRITICAL"]
             assert len(data["findings"]) > 0
             assert "ai_analysis" in data
+            assert data["security_scan"]["status"] == "not_checked"
     asyncio.run(_run())
 
 def test_index_page_render():
@@ -39,8 +40,10 @@ def test_index_page_render():
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/")
             assert resp.status_code == 200
-            assert "SRE RISK ANALYZER" in resp.text
-            assert "Production Deployment Risk Analyzer" in resp.text
+            assert "REPOSITORY RISK ANALYZER" in resp.text
+            assert "Secure code. Safer releases." in resp.text
+            assert "Code security" in resp.text
+            assert "Deployment risk" in resp.text
     asyncio.run(_run())
 
 def test_invalid_repo_url():

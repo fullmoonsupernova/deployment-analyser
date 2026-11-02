@@ -12,6 +12,7 @@ from ..github.repository import parse_repo_url, resolve_deployment_targets
 from ..github.comparison import fetch_deployment_diff
 from ..analysis.risk import analysis_pipeline
 from ..analysis.schemas import DeploymentAnalysisResult
+from ..scanner.security import scan_github_repository
 
 router = APIRouter()
 
@@ -165,6 +166,13 @@ async def analyze_repository(req: AnalyzeRepoRequest):
             changed_files=changed_files,
             single_commit_mode=single_commit_mode,
             bypass_cache=req.bypass_cache
+        )
+        result.security_scan = await scan_github_repository(
+            client=client,
+            owner=owner,
+            repo=repo,
+            ref=candidate_sha,
+            changed_files=changed_files
         )
         return result
     except Exception as e:

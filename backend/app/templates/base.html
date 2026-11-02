@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}SRE Production Deployment Risk Analyzer — BITnBUILD Hackathon{% endblock %}</title>
+  <title>{% block title %}Repository Security & Deployment Risk Analyzer — BITnBUILD{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%233b82f6'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
-  <meta name="description" content="SRE-grade pre-flight risk analyzer evaluating code, infrastructure, database migrations, dependencies, and traffic topology before production release.">
-  <link rel="stylesheet" href="/static/css/style.css?v=2.3.0">
+  <meta name="description" content="Analyze GitHub repositories for code security signals and production deployment risks, including infrastructure, dependencies, migrations, and traffic changes.">
+  <link rel="stylesheet" href="/static/css/style.css?v=2.5.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -22,8 +22,8 @@
           </svg>
         </div>
         <div class="brand-text">
-          <span class="brand-title">SRE RISK ANALYZER</span>
-          <span class="brand-sub">Production Deployment Pre-Flight Engine</span>
+          <span class="brand-title">REPOSITORY RISK ANALYZER</span>
+          <span class="brand-sub">Code security <span aria-hidden="true">·</span> deployment readiness</span>
         </div>
       </div>
 
@@ -43,11 +43,11 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M20 6L9 17l-5-5"/>
           </svg>
-          GITHUB AUTH: ACTIVE
+          TOKEN CONFIGURED
         </span>
         {% else %}
-        <span class="badge badge-warning" title="Public rate limit applies (60 req/hr). Add GITHUB_TOKEN in .env for 5000 req/hr.">
-          GITHUB: PUBLIC TIER
+        <span class="badge badge-warning" title="Public repositories can be analyzed without a token. Private repositories require a valid token.">
+          PUBLIC REPOS
         </span>
         {% endif %}
       </div>
@@ -63,17 +63,17 @@
   <footer class="footer">
     <div class="footer-container">
       <div class="footer-principle">
-        <span class="principle-tag">DESIGN PRINCIPLE</span>
-        <strong>DETERMINISTIC EVIDENCE FIRST → AI REASONING SECOND</strong>
-        <p>The deterministic scanner discovers what actually changed. The AI reasons strictly about how those verified factors interact under real production conditions.</p>
+        <span class="principle-tag">ANALYSIS APPROACH</span>
+        <strong>REPOSITORY SECURITY + PRODUCTION READINESS</strong>
+        <p>Deterministic checks surface code-security signals and deployment changes; AI adds context to verified findings where available.</p>
       </div>
       <div class="footer-note">
-        <span>Production Safety Pre-flight • Hackathon Edition</span>
+        <span>Repository analysis for safer, more secure releases</span>
       </div>
     </div>
   </footer>
 
-  <script src="/static/js/app.js?v=2.3.0"></script>
-  <script src="/static/js/dashboard.js?v=2.3.0"></script>
+  <script src="/static/js/app.js?v=2.5.0"></script>
+  <script src="/static/js/dashboard.js?v=2.5.0"></script>
 </body>
 </html>

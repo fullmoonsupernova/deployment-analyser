@@ -9,7 +9,9 @@ from .schemas import (
     GroqAnalysisResponse,
     FailureScenario,
     RolloutStrategy,
-    MonitoringSignal
+    MonitoringSignal,
+    SecurityFinding,
+    SecurityAITriage
 )
 from .prompts import GROQ_SYSTEM_PROMPT, build_user_prompt
 
@@ -35,23 +37,18 @@ class GroqAnalyzer:
             logger.info("GROQ_API_KEY not configured. Generating deterministic SRE reasoning.")
             return self.generate_deterministic_fallback(evidence)
 
-        # Build a compact, token-efficient evidence summary for the LLM
+        # Send only normalized finding metadata; repository source and paths stay local.
         compact_findings = [
             {
                 "id": f.id,
                 "category": f.category,
                 "type": f.type,
                 "severity": f.severity_hint,
-                "file": f.file,
-                "line": f.line,
-                "description": f.description,
-                "snippet": (f.evidence[:160] + "...") if len(f.evidence) > 160 else f.evidence
             }
             for f in evidence.findings
         ]
 
         compact_payload = {
-            "repository": evidence.repository.get("full_name") or evidence.repository.get("name", "app"),
             "findings": compact_findings,
             "inferred_services": [s.name for s in evidence.services],
             "historical_incident_patterns": [
@@ -107,6 +104,57 @@ class GroqAnalyzer:
             if not choices:
                 raise GroqAnalysisError("Empty choices returned from Groq API")
             return choices[0]["message"]["content"]
+
+    async def triage_security_findings(
+        self,
+        findings: List[SecurityFinding]
+    ) -> SecurityAITriage:
+        """Ask Groq to prioritize rule metadata without transmitting source or paths."""
+        if not self.api_key:
+            return SecurityAITriage(
+                status="unavailable",
+                message="GROQ_API_KEY is not configured; local pattern findings are still available."
+            )
+
+        payload = [
+            {
+                "id": finding.id,
+                "rule_id": finding.rule_id,
+                "severity": finding.severity,
+                "confidence": finding.confidence,
+            }
+            for finding in findings
+        ]
+        prompt = (
+            "Triage these local static-analysis rule matches. You are receiving only opaque finding IDs, "
+            "rule identifiers, severity, and confidence—not source code, file paths, or repository identity. "
+            "Do not infer specific exploitability beyond the rule metadata. Return only JSON with keys "
+            '"summary" (brief string) and "prioritized_finding_ids" (array of provided IDs). '
+            "Prioritize by likely impact and confidence. Input:\n"
+            f"{json.dumps(payload)}"
+        )
+
+        try:
+            raw_response = await self._call_groq(prompt)
+            data = json.loads(raw_response)
+            valid_ids = {finding.id for finding in findings}
+            priorities = data.get("prioritized_finding_ids", [])
+            if not isinstance(priorities, list):
+                raise GroqAnalysisError("Groq returned invalid security triage priorities.")
+            return SecurityAITriage(
+                status="completed",
+                summary=str(data.get("summary", "")),
+                prioritized_finding_ids=[
+                    finding_id for finding_id in priorities
+                    if isinstance(finding_id, str) and finding_id in valid_ids
+                ]
+            )
+        except (GroqAnalysisError, httpx.HTTPError, json.JSONDecodeError, KeyError, TypeError) as error:
+            logger.warning("Groq security triage unavailable: %s", error)
+            return SecurityAITriage(
+                status="unavailable",
+                message="Groq triage failed; local pattern findings are still available."
+            )
 
     def _parse_and_validate(self, json_text: str, evidence: EvidencePackage) -> GroqAnalysisResponse:
         """Parse JSON response, normalize keys, and enforce Hallucination Control on evidence_ids."""
