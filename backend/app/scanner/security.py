@@ -674,6 +674,40 @@ def scan_security_files(
     return findings
 
 
+def compute_security_risk_metrics(findings: List[SecurityFinding]) -> Dict[str, Any]:
+    critical_count = sum(1 for f in findings if (f.severity or "").lower() == "critical")
+    high_count = sum(1 for f in findings if (f.severity or "").lower() == "high")
+    medium_count = sum(1 for f in findings if (f.severity or "").lower() == "medium")
+    low_count = sum(1 for f in findings if (f.severity or "").lower() == "low")
+    significant_count = critical_count + high_count + medium_count
+
+    crit_pts = min(critical_count * 25.0, 50.0)
+    high_pts = min(high_count * 12.0, 35.0)
+    med_pts = min(medium_count * 5.0, 20.0)
+    low_pts = min(low_count * 1.0, 10.0)
+
+    score = min(round(crit_pts + high_pts + med_pts + low_pts, 1), 100.0)
+
+    if critical_count > 0 or (high_count >= 2 and score >= 45.0):
+        level = "CRITICAL"
+    elif high_count > 0 or score >= 40.0:
+        level = "HIGH"
+    elif medium_count > 0 or score >= 20.0:
+        level = "MEDIUM"
+    else:
+        level = "LOW"
+
+    return {
+        "risk_score": score,
+        "risk_level": level,
+        "critical_count": critical_count,
+        "high_count": high_count,
+        "medium_count": medium_count,
+        "low_count": low_count,
+        "significant_count": significant_count,
+    }
+
+
 async def scan_github_repository(
     client: GitHubClient,
     owner: str,
@@ -761,12 +795,21 @@ async def scan_github_repository(
         "a file changed by this deployment is not necessarily a newly introduced issue."
     )
 
+    metrics = compute_security_risk_metrics(findings)
+
     report = SecurityScanReport(
         status=status,
         message=" ".join(details),
         candidates_total=len(candidate_paths),
         files_scanned=len(source_files),
-        findings=findings
+        findings=findings,
+        risk_score=metrics["risk_score"],
+        risk_level=metrics["risk_level"],
+        critical_count=metrics["critical_count"],
+        high_count=metrics["high_count"],
+        medium_count=metrics["medium_count"],
+        low_count=metrics["low_count"],
+        significant_count=metrics["significant_count"],
     )
     if findings:
         report.ai_triage = await GroqAnalyzer().triage_security_findings(findings)

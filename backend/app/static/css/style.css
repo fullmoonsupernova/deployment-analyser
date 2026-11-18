@@ -772,6 +772,76 @@ input[type="text"]:focus {
   margin-top: 0.4rem;
 }
 
+.dual-risk-track {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.track-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.track-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.track-icon {
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.track-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.track-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.track-value {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.track-value.text-critical {
+  color: #f87171;
+}
+
+.track-value.text-high {
+  color: #fb923c;
+}
+
+.track-value.text-medium {
+  color: #facc15;
+}
+
+.track-value.text-low {
+  color: #4ade80;
+}
+
 /* Col 2: SRE Release Verdict */
 .sre-verdict-col {
   display: flex;

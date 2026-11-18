@@ -33,6 +33,9 @@ def test_analyze_scenario_endpoint():
             assert len(data["findings"]) > 0
             assert "ai_analysis" in data
             assert data["security_scan"]["status"] == "not_checked"
+            assert "composite_risk_score" in data
+            assert "composite_risk_level" in data
+            assert "total_risk_factors" in data
     asyncio.run(_run())
 
 def test_index_page_render():

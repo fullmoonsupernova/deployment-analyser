@@ -189,6 +189,23 @@
           <div class="risk-badge" id="riskLevelBadge">HIGH RISK</div>
           <div class="risk-factors-count" id="riskHeadline">0 risk factors</div>
           <div class="cache-badge hidden" id="cacheBadge">⚡ CACHED</div>
+          
+          <div class="dual-risk-track" id="dualRiskTrack">
+            <div class="track-item" id="trackDeployment" title="Reliability, schema migrations, replica loss, dependency shifts">
+              <span class="track-icon">🚀</span>
+              <div class="track-info">
+                <span class="track-label">DEPLOYMENT</span>
+                <span class="track-value" id="trackDepValue">0.0 LOW</span>
+              </div>
+            </div>
+            <div class="track-item" id="trackSecurity" title="Code vulnerabilities, injection, hardcoded secrets, CWE flaws">
+              <span class="track-icon">🛡️</span>
+              <div class="track-info">
+                <span class="track-label">CODE SECURITY</span>
+                <span class="track-value" id="trackSecValue">0.0 LOW</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Col 2: SRE Release Verdict -->

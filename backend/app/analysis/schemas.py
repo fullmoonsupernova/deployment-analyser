@@ -62,6 +62,13 @@ class SecurityScanReport(BaseModel):
     files_scanned: int = 0
     findings: List[SecurityFinding] = Field(default_factory=list)
     ai_triage: SecurityAITriage = Field(default_factory=SecurityAITriage)
+    risk_score: float = 0.0
+    risk_level: str = "LOW"
+    critical_count: int = 0
+    high_count: int = 0
+    medium_count: int = 0
+    low_count: int = 0
+    significant_count: int = 0
 
 class EvidencePackage(BaseModel):
     repository: Dict[str, Any]
@@ -116,3 +123,6 @@ class DeploymentAnalysisResult(BaseModel):
     ai_analysis: GroqAnalysisResponse
     cached: bool = False
     created_at: str
+    composite_risk_score: float = 0.0
+    composite_risk_level: str = "LOW"
+    total_risk_factors: int = 0

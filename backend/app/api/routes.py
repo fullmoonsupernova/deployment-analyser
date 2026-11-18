@@ -115,6 +115,9 @@ async def analyze_scenario(req: AnalyzeScenarioRequest):
         single_commit_mode=single_commit_mode,
         bypass_cache=req.bypass_cache
     )
+    result.composite_risk_score = result.deterministic_risk_score
+    result.composite_risk_level = result.deterministic_risk_level
+    result.total_risk_factors = result.significant_factors_count
     return result
 
 @router.post("/api/analyze")
@@ -174,6 +177,28 @@ async def analyze_repository(req: AnalyzeRepoRequest):
             ref=candidate_sha,
             changed_files=changed_files
         )
+
+        sec = result.security_scan
+        dep_score = result.deterministic_risk_score
+        sec_score = sec.risk_score
+
+        # Composite release gate: if either security or deployment has critical risks, overall is CRITICAL
+        if sec.risk_level == "CRITICAL" or result.deterministic_risk_level == "CRITICAL":
+            comp_level = "CRITICAL"
+            comp_score = max(dep_score, sec_score, 80.0)
+        elif sec.risk_level == "HIGH" or result.deterministic_risk_level == "HIGH":
+            comp_level = "HIGH"
+            comp_score = max(dep_score, sec_score, 55.0)
+        elif sec.risk_level == "MEDIUM" or result.deterministic_risk_level == "MEDIUM":
+            comp_level = "MEDIUM"
+            comp_score = max(dep_score, sec_score, 30.0)
+        else:
+            comp_level = "LOW"
+            comp_score = max(dep_score, sec_score)
+
+        result.composite_risk_score = round(min(comp_score, 100.0), 1)
+        result.composite_risk_level = comp_level
+        result.total_risk_factors = result.significant_factors_count + sec.significant_count
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Risk analysis error: {str(e)}")

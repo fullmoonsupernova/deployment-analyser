@@ -68,7 +68,32 @@ function renderDashboard(data) {
 
   // 3. Risk Gauge, Verdict Card & Observability Pillars
   try {
-    renderRiskGauge(data.deterministic_risk_score, data.deterministic_risk_level);
+    const sec = data.security_scan || {};
+    const secFindings = sec.findings || [];
+    const secCrit = secFindings.filter(f => (f.severity || "").toLowerCase() === "critical");
+    const secHigh = secFindings.filter(f => (f.severity || "").toLowerCase() === "high");
+    const secMed = secFindings.filter(f => (f.severity || "").toLowerCase() === "medium");
+
+    const depScore = data.deterministic_risk_score || 0;
+    const depLevel = (data.deterministic_risk_level || "LOW").toUpperCase();
+    const depFactors = data.significant_factors_count || 0;
+    const totalDepFindings = (data.findings || []).length;
+
+    const secScore = sec.risk_score !== undefined ? sec.risk_score : Math.min(secCrit.length * 25 + secHigh.length * 12 + secMed.length * 5, 100);
+    const secLevel = (sec.risk_level || (secCrit.length > 0 ? "CRITICAL" : secHigh.length > 0 ? "HIGH" : secMed.length > 0 ? "MEDIUM" : "LOW")).toUpperCase();
+
+    // Composite release score: if composite field present use it, otherwise max of depScore and secScore
+    const compositeScore = data.composite_risk_score !== undefined ? data.composite_risk_score : Math.max(depScore, secScore);
+    let compositeLevel = data.composite_risk_level;
+    if (!compositeLevel) {
+      if (secLevel === "CRITICAL" || depLevel === "CRITICAL") compositeLevel = "CRITICAL";
+      else if (secLevel === "HIGH" || depLevel === "HIGH") compositeLevel = "HIGH";
+      else if (secLevel === "MEDIUM" || depLevel === "MEDIUM") compositeLevel = "MEDIUM";
+      else compositeLevel = "LOW";
+    }
+
+    // Render the primary release gate circular gauge with the composite release health
+    renderRiskGauge(compositeScore, compositeLevel);
     renderSreVerdict(data);
     renderObservabilityPillars(data);
 
@@ -76,22 +101,40 @@ function renderDashboard(data) {
     const riskHeadline = document.getElementById("riskHeadline");
     const cacheBadge = document.getElementById("cacheBadge");
 
-    const level = (data.deterministic_risk_level || "MEDIUM").toLowerCase();
     if (riskBadge) {
-      riskBadge.className = `risk-badge ${level}`;
-      riskBadge.textContent = `${data.deterministic_risk_level || "MEDIUM"} RISK`;
+      const lvl = compositeLevel.toLowerCase();
+      riskBadge.className = `risk-badge ${lvl}`;
+      riskBadge.textContent = `${compositeLevel} RELEASE RISK`;
     }
+
     if (riskHeadline) {
-      const factors = data.significant_factors_count || 0;
-      const totalFindings = (data.findings || []).length;
-      if (factors > 0) {
-        riskHeadline.textContent = `${factors} significant risk factor${factors === 1 ? '' : 's'} (${totalFindings} total findings)`;
-      } else if (totalFindings > 0) {
-        riskHeadline.textContent = `${totalFindings} minor finding${totalFindings === 1 ? '' : 's'} (0 high/medium hazards)`;
+      const secCritHigh = secCrit.length + secHigh.length;
+      const secTotal = secFindings.length;
+      if (depFactors > 0 && secTotal > 0) {
+        riskHeadline.textContent = `${depFactors} deployment hazard${depFactors === 1 ? '' : 's'} · ${secTotal} security vulnerabilit${secTotal === 1 ? 'y' : 'ies'} (${secCritHigh} crit/high)`;
+      } else if (secTotal > 0) {
+        riskHeadline.textContent = `0 deployment hazards · ${secTotal} security vulnerabilit${secTotal === 1 ? 'y' : 'ies'} (${secCritHigh} crit/high)`;
+      } else if (depFactors > 0) {
+        riskHeadline.textContent = `${depFactors} deployment hazard${depFactors === 1 ? '' : 's'} · 0 security vulnerabilities`;
+      } else if (totalDepFindings > 0) {
+        riskHeadline.textContent = `${totalDepFindings} minor change${totalDepFindings === 1 ? '' : 's'} · 0 security vulnerabilities`;
       } else {
-        riskHeadline.textContent = "0 risk factors detected";
+        riskHeadline.textContent = "0 deployment hazards · 0 security vulnerabilities";
       }
     }
+
+    // Update Dual-Risk Track pill values
+    const trackDep = document.getElementById("trackDepValue");
+    const trackSec = document.getElementById("trackSecValue");
+    if (trackDep) {
+      trackDep.textContent = `${depScore.toFixed(1)} ${depLevel}`;
+      trackDep.className = `track-value text-${depLevel.toLowerCase()}`;
+    }
+    if (trackSec) {
+      trackSec.textContent = `${secScore.toFixed(1)} ${secLevel}`;
+      trackSec.className = `track-value text-${secLevel.toLowerCase()}`;
+    }
+
     if (cacheBadge) {
       if (data.cached) {
         cacheBadge.classList.remove("hidden");
@@ -779,61 +822,100 @@ function renderSreVerdict(data) {
   const rolloutTag = document.getElementById("verdictRolloutTag");
   const canaryTag = document.getElementById("verdictCanaryTag");
 
-  const level = (data.deterministic_risk_level || "MEDIUM").toUpperCase();
-  const factors = data.significant_factors_count || 0;
-  const findings = data.findings || [];
+  if (!card) return;
+
+  const depLevel = (data.deterministic_risk_level || "LOW").toUpperCase();
+  const depFactors = data.significant_factors_count || 0;
+  const depFindings = data.findings || [];
+
+  const sec = data.security_scan || {};
+  const secFindings = sec.findings || [];
+  const secCrit = secFindings.filter(f => (f.severity || "").toLowerCase() === "critical");
+  const secHigh = secFindings.filter(f => (f.severity || "").toLowerCase() === "high");
+  const secMed = secFindings.filter(f => (f.severity || "").toLowerCase() === "medium");
+  const secLevel = (sec.risk_level || (secCrit.length > 0 ? "CRITICAL" : secHigh.length > 0 ? "HIGH" : secMed.length > 0 ? "MEDIUM" : "LOW")).toUpperCase();
+
+  let compositeLevel = data.composite_risk_level;
+  if (!compositeLevel) {
+    if (depLevel === "CRITICAL" || secLevel === "CRITICAL") compositeLevel = "CRITICAL";
+    else if (depLevel === "HIGH" || secLevel === "HIGH") compositeLevel = "HIGH";
+    else if (depLevel === "MEDIUM" || secLevel === "MEDIUM") compositeLevel = "MEDIUM";
+    else compositeLevel = "LOW";
+  }
+
   const strategy = data.ai_analysis?.rollout_strategy?.strategy || "Canary";
 
-  const critFindings = findings.filter(f => (f.severity_hint || "").toLowerCase() === "critical");
-  const highFindings = findings.filter(f => (f.severity_hint || "").toLowerCase() === "high");
-  const medFindings = findings.filter(f => (f.severity_hint || "").toLowerCase() === "medium");
-
-  const hasDbHazard = findings.some(f => f.category === "database");
-  const hasInfraHazard = findings.some(f => f.category === "infrastructure");
-  const hasExtHazard = findings.some(f => f.category === "external_service");
-
-  if (!card) return;
+  const critDep = depFindings.filter(f => (f.severity_hint || "").toLowerCase() === "critical");
+  const highDep = depFindings.filter(f => (f.severity_hint || "").toLowerCase() === "high");
+  const hasDbHazard = depFindings.some(f => f.category === "database");
+  const hasInfraHazard = depFindings.some(f => f.category === "infrastructure");
+  const hasExtHazard = depFindings.some(f => f.category === "external_service");
 
   card.className = "verdict-card";
 
-  if (level === "CRITICAL") {
+  if (compositeLevel === "CRITICAL") {
     card.classList.add("verdict-critical");
     if (icon) icon.textContent = "🛑";
     if (title) title.textContent = "DEPLOYMENT BLOCKED";
-    if (hasDbHazard) {
-      if (desc) desc.textContent = `${critFindings.length + highFindings.length} critical hazard signal${critFindings.length + highFindings.length === 1 ? '' : 's'} detected, including database schema modifications. Hard gate active: senior SRE sign-off and multi-stage expand/contract migration required.`;
+
+    if (depLevel === "CRITICAL" && (secCrit.length > 0 || secLevel === "CRITICAL")) {
+      if (desc) desc.textContent = `Dual hard gate triggered: ${depFactors} critical deployment hazard${depFactors === 1 ? '' : 's'} and ${secCrit.length || secFindings.length} critical code security flaw${secCrit.length === 1 ? '' : 's'} detected. Immediate SRE & AppSec intervention required before rollout.`;
+      if (rolloutTag) rolloutTag.textContent = "SRE & AppSec Gate Active";
+    } else if (secCrit.length > 0 || secLevel === "CRITICAL") {
+      const critHighCount = secCrit.length + secHigh.length;
+      if (desc) desc.textContent = `Security Hard Gate triggered: ${secCrit.length} critical and ${secHigh.length} high-severity code vulnerabilities detected. Deployment is blocked until critical code flaws are remediated.`;
+      if (rolloutTag) rolloutTag.textContent = "AppSec Hard Gate Active";
+    } else if (hasDbHazard) {
+      if (desc) desc.textContent = `${critDep.length + highDep.length} critical deployment hazard signal${critDep.length + highDep.length === 1 ? '' : 's'} detected, including destructive database schema changes. Hard gate active: requires multi-stage expand/contract migration.`;
       if (rolloutTag) rolloutTag.textContent = "Expand/Contract Migration";
     } else if (hasInfraHazard) {
-      if (desc) desc.textContent = `${factors} critical infrastructure hazard signal${factors === 1 ? '' : 's'} detected (single replica redundancy loss or pod disruption). Hard gate active: requires Senior SRE sign-off.`;
+      if (desc) desc.textContent = `${depFactors} critical infrastructure hazard signal${depFactors === 1 ? '' : 's'} detected (single replica redundancy loss or pod disruption). Hard gate active: requires Senior SRE sign-off.`;
       if (rolloutTag) rolloutTag.textContent = "Infra Sign-off Required";
     } else {
-      if (desc) desc.textContent = `${factors} high-impact production hazard signal${factors === 1 ? '' : 's'} detected. Hard gate active: automated direct release blocked pending manual SRE review.`;
+      if (desc) desc.textContent = `${depFactors} high-impact production hazard signal${depFactors === 1 ? '' : 's'} detected. Hard gate active: automated direct release blocked pending manual SRE review.`;
       if (rolloutTag) rolloutTag.textContent = "Manual SRE Gate";
     }
     if (canaryTag) canaryTag.textContent = "Deployment Gated";
-  } else if (level === "HIGH") {
+
+  } else if (compositeLevel === "HIGH") {
     card.classList.add("verdict-high");
     if (icon) icon.textContent = "⚠️";
-    if (title) title.textContent = "MANDATORY CANARY";
-    if (desc) desc.textContent = `${factors} high-impact production risk factor${factors === 1 ? '' : 's'} identified (${highFindings.length} high, ${medFindings.length} medium). Direct release rejected; gated canary rollout with automated rollback triggers required.`;
-    if (rolloutTag) rolloutTag.textContent = `Strategy: ${strategy.toUpperCase()}`;
+    if (title) title.textContent = "MANDATORY CANARY / SECURITY REVIEW";
+
+    if (secHigh.length > 0 && depFactors > 0) {
+      if (desc) desc.textContent = `Elevated release risk: ${depFactors} deployment hazard${depFactors === 1 ? '' : 's'} and ${secHigh.length} high-severity code security issue${secHigh.length === 1 ? '' : 's'} identified. Gated canary rollout with automated rollback triggers required.`;
+      if (rolloutTag) rolloutTag.textContent = `Strategy: ${strategy.toUpperCase()}`;
+    } else if (secHigh.length > 0) {
+      if (desc) desc.textContent = `Security alert: ${secHigh.length} high-severity code vulnerabilit${secHigh.length === 1 ? 'y' : 'ies'} detected (${secMed.length} medium). AppSec code review and verification recommended prior to full production traffic promotion.`;
+      if (rolloutTag) rolloutTag.textContent = "AppSec Review Recommended";
+    } else {
+      if (desc) desc.textContent = `${depFactors} high-impact production risk factor${depFactors === 1 ? '' : 's'} identified (${highDep.length} high, ${depFindings.filter(f => (f.severity_hint || '').toLowerCase() === 'medium').length} medium). Direct release rejected; gated canary rollout with automated rollback triggers required.`;
+      if (rolloutTag) rolloutTag.textContent = `Strategy: ${strategy.toUpperCase()}`;
+    }
     if (canaryTag) canaryTag.textContent = "Automated Rollback Active";
-  } else if (level === "MEDIUM") {
+
+  } else if (compositeLevel === "MEDIUM") {
     card.classList.add("verdict-medium");
     if (icon) icon.textContent = "🛡️";
     if (title) title.textContent = "GUARDED ROLLOUT";
-    if (hasExtHazard) {
-      if (desc) desc.textContent = `Moderate production risk detected across ${factors} significant signal${factors === 1 ? '' : 's'}, including external service network calls. Proceed with canary traffic split and real-time latency/error alerting.`;
+
+    if (secMed.length > 0 && depFactors > 0) {
+      if (desc) desc.textContent = `Moderate release risk: ${depFactors} deployment signal${depFactors === 1 ? '' : 's'} and ${secMed.length} medium-severity code finding${secMed.length === 1 ? '' : 's'}. Proceed with canary traffic split and real-time metric thresholds.`;
+    } else if (secMed.length > 0) {
+      if (desc) desc.textContent = `Moderate security risk: ${secMed.length} medium-severity security finding${secMed.length === 1 ? '' : 's'} detected in code patterns. Clean deployment diff, but code hygiene review advised during canary rollout.`;
+    } else if (hasExtHazard) {
+      if (desc) desc.textContent = `Moderate production risk detected across ${depFactors} significant signal${depFactors === 1 ? '' : 's'}, including external service network calls. Proceed with canary traffic split and real-time latency/error alerting.`;
     } else {
-      if (desc) desc.textContent = `Moderate production risk detected across ${factors} significant signal${factors === 1 ? '' : 's'}. Proceed with canary traffic split and real-time metric thresholds.`;
+      if (desc) desc.textContent = `Moderate production risk detected across ${depFactors} significant signal${depFactors === 1 ? '' : 's'}. Proceed with canary traffic split and real-time metric thresholds.`;
     }
     if (rolloutTag) rolloutTag.textContent = `Strategy: ${strategy.toUpperCase()}`;
     if (canaryTag) canaryTag.textContent = "Canary Gating Active";
+
   } else {
     card.classList.add("verdict-low");
     if (icon) icon.textContent = "✅";
-    if (title) title.textContent = "STANDARD CANARY APPROVED";
-    if (desc) desc.textContent = `Low production release risk. No breaking architectural or destructive changes detected (${findings.length} minor signal${findings.length === 1 ? '' : 's'}). Safe for automated deployment pipeline with standard canary verification.`;
+    if (title) title.textContent = "RELEASE APPROVED (SRE & SECURITY CLEAR)";
+    if (desc) desc.textContent = `Low release risk. Zero destructive deployment hazards and zero security vulnerabilities detected (${depFindings.length} minor signal${depFindings.length === 1 ? '' : 's'}). Safe for automated deployment pipeline with standard verification.`;
     if (rolloutTag) rolloutTag.textContent = "Standard Progressive Rollout";
     if (canaryTag) canaryTag.textContent = "Health Probes Active";
   }
@@ -848,7 +930,10 @@ function renderObservabilityPillars(data) {
   const confText = document.getElementById("riskConfidenceText");
 
   const findings = data.findings || [];
-  const hasCode = findings.some(f => f.category === "code" || f.category === "traffic");
+  const sec = data.security_scan || {};
+  const secFindings = sec.findings || [];
+
+  const hasCode = findings.some(f => f.category === "code" || f.category === "traffic") || secFindings.length > 0;
   const hasDep = findings.some(f => f.category === "dependency");
   const hasInfra = findings.some(f => f.category === "infrastructure" || f.category === "external_service");
   const hasConfig = findings.some(f => f.category === "configuration" || f.category === "database");
@@ -865,7 +950,13 @@ function renderObservabilityPillars(data) {
   }
 
   if (confText) {
-    confText.textContent = data.confidence_reason || "Deterministic AST & manifest coverage verified.";
+    if (secFindings.length > 0 && findings.length > 0) {
+      confText.textContent = `Deterministic AST diff & security scanner verified across ${sec.files_scanned || 0} files.`;
+    } else if (secFindings.length > 0) {
+      confText.textContent = `Static security scanner verified across ${sec.files_scanned || 0} repository files (${secFindings.length} finding${secFindings.length === 1 ? '' : 's'}).`;
+    } else {
+      confText.textContent = data.confidence_reason || "Deterministic AST & manifest coverage verified.";
+    }
   }
 }
 
@@ -876,10 +967,12 @@ function renderObservabilityPillars(data) {
 function copyPrMarkdown() {
   const d = window.currentAnalysisData;
   if (!d) return;
-  const level = d.deterministic_risk_level || "MEDIUM";
-  const score = d.deterministic_risk_score || 0;
+  const level = d.composite_risk_level || d.deterministic_risk_level || "MEDIUM";
+  const score = d.composite_risk_score !== undefined ? d.composite_risk_score : (d.deterministic_risk_score || 0);
   const confidence = d.analysis_confidence || "HIGH";
-  const factors = d.significant_factors_count || 0;
+  const depFactors = d.significant_factors_count || 0;
+  const sec = d.security_scan || {};
+  const secFindings = sec.findings || [];
   const repoName = d.repository?.full_name || "Repository";
   const baseSha = (d.baseline_commit || "0000000").substring(0, 8);
   const candSha = (d.deployment_commit || "0000000").substring(0, 8);
@@ -895,20 +988,20 @@ function copyPrMarkdown() {
     verdictText = "DEPLOYMENT BLOCKED";
   } else if (level === "HIGH") {
     verdictEmoji = "⚠️";
-    verdictText = "MANDATORY CANARY GATING";
+    verdictText = "MANDATORY CANARY / SECURITY REVIEW";
   } else if (level === "MEDIUM") {
     verdictEmoji = "🛡️";
     verdictText = "GUARDED ROLLOUT";
   } else {
     verdictEmoji = "✅";
-    verdictText = "STANDARD CANARY APPROVED";
+    verdictText = "RELEASE APPROVED (SRE & SECURITY CLEAR)";
   }
 
   let md = `## ${verdictEmoji} Repository Security & Deployment Risk Assessment\n\n`;
   md += `**Repository**: \`${repoName}\` (\`${baseSha}\` → \`${candSha}\`)\n`;
   md += `**Release Verdict**: **${verdictText}**\n`;
-  md += `**Deterministic Risk Score**: **${score}/100** (${level} RISK) | **Confidence**: **${confidence}**\n`;
-  md += `**Signals Detected**: ${factors} significant production-risk factors\n\n`;
+  md += `**Composite Risk Score**: **${score}/100** (${level} RELEASE RISK) | **Confidence**: **${confidence}**\n`;
+  md += `**Signals Detected**: ${depFactors} deployment hazard${depFactors === 1 ? '' : 's'} · ${secFindings.length} code security vulnerabilit${secFindings.length === 1 ? 'y' : 'ies'}\n\n`;
   
   md += `### 📋 Executive Summary\n${d.ai_analysis?.summary || "Analysis completed based on deterministic code, infrastructure, and dependency changes."}\n\n`;
 
@@ -964,9 +1057,14 @@ function exportMarkdownReport() {
   let md = `# Repository Security & Deployment Risk Report\n\n`;
   md += `**Generated**: ${new Date().toUTCString()}\n`;
   md += `**Repository**: ${d.repository?.full_name || "Unknown"}\n`;
+  const compScore = d.composite_risk_score !== undefined ? d.composite_risk_score : (d.deterministic_risk_score || 0);
+  const compLevel = d.composite_risk_level || d.deterministic_risk_level || "LOW";
+  const sec = d.security_scan || {};
   md += `**Baseline Commit**: \`${d.baseline_commit || "N/A"}\`\n`;
   md += `**Candidate Commit**: \`${d.deployment_commit || "N/A"}\`\n`;
-  md += `**Deterministic Score**: ${d.deterministic_risk_score} / 100 (${d.deterministic_risk_level} RISK)\n`;
+  md += `**Composite Release Score**: ${compScore} / 100 (${compLevel} RELEASE RISK)\n`;
+  md += `**Deployment Risk**: ${d.deterministic_risk_score} / 100 (${d.deterministic_risk_level} RISK, ${d.significant_factors_count || 0} hazards)\n`;
+  md += `**Code Security Risk**: ${sec.risk_score !== undefined ? sec.risk_score : 0} / 100 (${sec.risk_level || 'LOW'} RISK, ${(sec.findings || []).length} vulnerabilities)\n`;
   md += `**Confidence**: ${d.analysis_confidence} (${d.confidence_reason || ""})\n\n`;
 
   md += `## 1. Executive Summary\n\n`;
