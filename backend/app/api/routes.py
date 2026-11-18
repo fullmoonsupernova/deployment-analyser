@@ -162,6 +162,14 @@ async def analyze_repository(req: AnalyzeRepoRequest):
 
     # Execute complete risk analysis pipeline
     try:
+        cache_key = analysis_pipeline._make_cache_key(owner, repo, baseline_sha, candidate_sha)
+        if not req.bypass_cache and cache_key in analysis_pipeline._cache:
+            cached_res = analysis_pipeline._cache[cache_key]
+            if cached_res.security_scan and cached_res.security_scan.status != "not_checked" and cached_res.composite_risk_score is not None:
+                res = cached_res.model_copy()
+                res.cached = True
+                return res
+
         result = await analysis_pipeline.run_analysis(
             repo_meta=repo_meta,
             baseline_commit=baseline_sha,
@@ -199,6 +207,7 @@ async def analyze_repository(req: AnalyzeRepoRequest):
         result.composite_risk_score = round(min(comp_score, 100.0), 1)
         result.composite_risk_level = comp_level
         result.total_risk_factors = result.significant_factors_count + sec.significant_count
+        analysis_pipeline._cache[cache_key] = result
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Risk analysis error: {str(e)}")
