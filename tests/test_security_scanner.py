@@ -297,3 +297,118 @@ def test_groq_client_uses_configured_api_key(monkeypatch):
 
     assert response == "ok"
     assert observed_headers["Authorization"] == "Bearer sample-groq-key"
+
+
+def test_comprehensive_vulnerability_pattern_detection():
+    samples = [
+        # HARDCODED-API-TOKEN
+        ('aws_key = "' + 'AKIA' + 'IOSFODNN7EXAMPLE"', "HARDCODED-API-TOKEN"),
+        ('github_token = "' + 'ghp_' + '1234567890abcdefghijklmnopqrstuvwxyz"', "HARDCODED-API-TOKEN"),
+        ('slack_token = "' + 'xoxb-' + '123456789012-' + 'abcdefghijklmnopqrst"', "HARDCODED-API-TOKEN"),
+        ('stripe_key = "' + 'sk_live_' + '1234567890abcdefghijklmn"', "HARDCODED-API-TOKEN"),
+        ('google_api = "' + 'AIza' + 'SyD-1234567890abcdefghijklmnopqrst"', "HARDCODED-API-TOKEN"),
+        ('key = "' + '-----BEGIN RSA ' + 'PRIVATE KEY-----\nMIIEowIBAAKCAQEA..."', "HARDCODED-API-TOKEN"),
+
+        # HARDCODED-DATABASE-URI
+        ('url = "postgres://admin:secretpass@localhost:5432/mydb"', "HARDCODED-DATABASE-URI"),
+        ('mongo = "mongodb://user:password123@cluster0.mongodb.net/prod"', "HARDCODED-DATABASE-URI"),
+
+        # PATH-TRAVERSAL
+        ('with open(f"/app/data/{user_path}") as f:', "PATH-TRAVERSAL"),
+        ('send_file(request.args.get("file"))', "PATH-TRAVERSAL"),
+        ('fs.readFile(req.query.target, "utf8")', "PATH-TRAVERSAL"),
+
+        # TEMPLATE-INJECTION-SSTI
+        ('render_template_string(f"Hello {user_input}")', "TEMPLATE-INJECTION-SSTI"),
+        ('jinja2.Template(f"Hello {name}").render()', "TEMPLATE-INJECTION-SSTI"),
+        ('ejs.render(req.body.template)', "TEMPLATE-INJECTION-SSTI"),
+
+        # WEAK-CRYPTOGRAPHY
+        ('token = hashlib.md5(data.encode()).hexdigest()', "WEAK-CRYPTOGRAPHY"),
+        ('sig = hashlib.sha1(payload).digest()', "WEAK-CRYPTOGRAPHY"),
+        ('cipher = AES.new(key, AES.MODE_ECB)', "WEAK-CRYPTOGRAPHY"),
+        ('crypto.createHash("md5")', "WEAK-CRYPTOGRAPHY"),
+
+        # INSECURE-RANDOM
+        ('auth_token = "".join([random.choice(chars) for _ in range(32)])', "INSECURE-RANDOM"),
+        ('password = random.randint(100000, 999999)', "INSECURE-RANDOM"),
+
+        # INSECURE-JWT
+        ('payload = jwt.decode(token, verify=False)', "INSECURE-JWT"),
+        ('jwt.decode(token, key, algorithms=["none"])', "INSECURE-JWT"),
+
+        # XML-EXTERNAL-ENTITY-XXE
+        ('parser = etree.XMLParser(resolve_entities=True)', "XML-EXTERNAL-ENTITY-XXE"),
+        ('libxml_disable_entity_loader(false)', "XML-EXTERNAL-ENTITY-XXE"),
+
+        # INSECURE-CORS
+        ('app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True)', "INSECURE-CORS"),
+
+        # DEBUG-MODE-ENABLED
+        ('app.run(host="0.0.0.0", debug=True)', "DEBUG-MODE-ENABLED"),
+        ('DEBUG = True', "DEBUG-MODE-ENABLED"),
+
+        # OPEN-REDIRECT
+        ('return redirect(request.args.get("next"))', "OPEN-REDIRECT"),
+        ('res.redirect(req.query.redirect_url)', "OPEN-REDIRECT"),
+
+        # PROTOTYPE-POLLUTION
+        ('Object.assign(target, req.body)', "PROTOTYPE-POLLUTION"),
+        ('lodash.merge({}, req.body)', "PROTOTYPE-POLLUTION"),
+
+        # INSECURE-PERMISSIONS-OR-TEMP
+        ('temp_file = tempfile.mktemp()', "INSECURE-PERMISSIONS-OR-TEMP"),
+        ('os.chmod(path, 0o777)', "INSECURE-PERMISSIONS-OR-TEMP"),
+
+        # NOSQL-INJECTION
+        ('db.users.find({ "$where": "this.user == \'" + user })', "NOSQL-INJECTION"),
+
+        # LDAP-INJECTION
+        ('ldap.search_s("dc=com", ldap.SCOPE_SUBTREE, "cn=" + username)', "LDAP-INJECTION"),
+
+        # REDOS-UNTRUSTED-REGEX
+        ('regex = new RegExp(req.query.pattern)', "REDOS-UNTRUSTED-REGEX"),
+        ('re.compile(request.args.get("filter"))', "REDOS-UNTRUSTED-REGEX"),
+
+        # INSECURE-COOKIE
+        ('response.set_cookie("auth", token, httponly=False)', "INSECURE-COOKIE"),
+
+        # CODE-BROKEN-AUTHENTICATION
+        ('def is_authenticated(user): return True', "CODE-BROKEN-AUTHENTICATION"),
+        ('if password == "" or True:', "CODE-BROKEN-AUTHENTICATION"),
+    ]
+
+    for code_snippet, expected_rule in samples:
+        findings = scan_security_files([{"filename": "app/service.py", "content": code_snippet}])
+        detected_rules = {f.rule_id for f in findings}
+        assert expected_rule in detected_rules, f"Expected {expected_rule} for snippet: {code_snippet}"
+
+
+def test_changed_files_are_prioritized_in_scan():
+    class FakeClient:
+        token = "token"
+
+        async def get_repository_tree(self, owner, repo, ref):
+            # 120 files: file_000 to file_119
+            tree = [{"path": f"src/file_{i:03d}.py", "type": "blob"} for i in range(120)]
+            return tree, False
+
+        async def get_file_content(self, owner, repo, path, ref, max_bytes):
+            if path == "src/file_115.py":
+                return 'app.run(debug=True)'
+            return '# normal file content'
+
+    # src/file_115.py is at index 115 (past 100 limit), but it was changed in deployment
+    report = asyncio.run(scan_github_repository(
+        FakeClient(),
+        "owner",
+        "repo",
+        "sha",
+        changed_files=[{"filename": "src/file_115.py"}]
+    ))
+
+    # Because it was prioritized, it was fetched and scanned
+    matched_files = [f.file for f in report.findings]
+    assert "src/file_115.py" in matched_files
+    assert any(f.rule_id == "DEBUG-MODE-ENABLED" for f in report.findings)
+

@@ -17,6 +17,7 @@ MAX_FINDINGS_PER_FILE = 20
 SOURCE_EXTENSIONS = {
     ".c", ".cc", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js", ".jsx",
     ".kt", ".php", ".py", ".rb", ".rs", ".sh", ".sql", ".ts", ".tsx",
+    ".cjs", ".mjs", ".vue", ".svelte", ".html",
 }
 IGNORED_DIRECTORIES = {
     ".git", ".venv", "build", "coverage", "dist", "node_modules",
@@ -27,27 +28,54 @@ RULES = (
     (
         "CODE-SQLI",
         "high",
-        0.82,
+        0.85,
         "Possible SQL injection",
-        "A query appears to use string interpolation or formatting. If untrusted input reaches this query, an attacker may alter its meaning.",
-        "Use parameterized queries and keep SQL structure separate from user-controlled values.",
+        "A database query appears to construct SQL commands using string formatting, interpolation, or concatenation with dynamic variables.",
+        "Use parameterized queries, prepared statements, or ORM parameter binding instead of string concatenation.",
         re.compile(
             r"""(?ix)
-            (?:execute|executeQuery|executeUpdate|executemany|query|rawQuery)\s*\(\s*f["']
+            (?:execute|executeQuery|executeUpdate|executemany|query|rawQuery|raw|from_raw_sql|sql)\s*\(\s*f["']
             |(?:execute|query)\s*\([^)\n]*\.format\s*\(
-            |(?:execute|executeQuery|executeUpdate|query|rawQuery)\s*\([^)\n]*["'][^"']*["']\s*\+
+            |(?:execute|executeQuery|executeUpdate|query|rawQuery)\s*\([^)\n]*["'][^"']*["']\s*[\+\%]
             |\.query\s*\(\s*`[^`]*\$\{
+            |\btext\s*\(\s*f["']
+            |\b(?:select|insert|update|delete)\b[^;\n]*["']\s*[\+\%]\s*[a-zA-Z_]
+            |prisma\.\$queryRawUnsafe\s*\(
+            |sequelize\.query\s*\([^)\n]*\+
+            |createStatement\s*\(\s*\)\.execute(?:Query|Update)\s*\([^)\n]*\+
+            |\$pdo->(?:query|exec)\s*\([^)\n]*["'][^"']*["']\s*\.
+            |mysqli_query\s*\([^)\n]*["'][^"']*["']\s*\.
+            |db\.(?:Query|Exec)\s*\(\s*fmt\.Sprintf\s*\(
+            |SqlCommand\s*\(\s*["'][^"']*["']\s*\+
             """
         ),
     ),
     (
         "CODE-CMDI",
         "high",
-        0.84,
+        0.88,
         "Possible command injection",
-        "A shell command is constructed or executed through an API that can interpret shell metacharacters.",
-        "Avoid shell execution; pass an argument list and validate every value derived from external input.",
-        re.compile(r"(?i)\bos\.system\s*\(|\bsubprocess\.(?:run|call|Popen)\s*\([^)\n]*shell\s*=\s*True"),
+        "A system shell command is constructed or executed with an interpreter that can evaluate shell metacharacters.",
+        "Avoid shell execution; pass argument lists (shell=False) and validate or sanitize all external inputs.",
+        re.compile(
+            r"""(?ix)
+            \bos\.system\s*\(
+            |\bsubprocess\.(?:run|call|Popen|check_output|check_call)\s*\([^)\n]*shell\s*=\s*True
+            |\bos\.popen\s*\(
+            |\bos\.spawn[lpev]*\s*\(
+            |\bcommands\.get(?:output|statusoutput)\s*\(
+            |\bpty\.spawn\s*\(
+            |child_process\.(?:exec|execSync)\s*\(
+            |child_process\.spawn\s*\([^)\n]*shell\s*:\s*true
+            |\b(?:shell_exec|passthru|proc_open|pcntl_exec)\s*\(
+            |\bexec\s*\([^)\n]*\$(?:_GET|_POST|_REQUEST|[a-zA-Z_])
+            |Runtime\.getRuntime\s*\(\s*\)\.exec\s*\(
+            |ProcessBuilder\s*\([^)\n]*\+
+            |exec\.Command\s*\(\s*["'](?:sh|bash|cmd|powershell)["']\s*,\s*["']-[cC]["']
+            |Kernel\.open\s*\(\s*["']\|
+            |\b(?:system|popen)\s*\([^)\n]*\+
+            """
+        ),
     ),
     (
         "CODE-UNSAFE-DESERIALIZATION",
@@ -56,58 +84,386 @@ RULES = (
         "Unsafe deserialization",
         "The code uses a deserializer that may instantiate executable or attacker-controlled objects.",
         "Use a safe data format and safe loader; do not deserialize untrusted data with object-capable loaders.",
-        re.compile(r"(?i)\b(?:pickle\.(?:load|loads)|_pickle\.(?:load|loads)|yaml\.load\s*\(|unserialize\s*\(|readObject\s*\()"),
+        re.compile(
+            r"""(?ix)
+            \b(?:pickle\.(?:load|loads)|_pickle\.(?:load|loads)|cPickle\.(?:load|loads))\b
+            |\byaml\.load\s*\(
+            |\bunserialize\s*\(
+            |\breadObject\s*\(
+            |\bXMLDecoder\s*\(
+            |\bshelve\.open\s*\(
+            |\bjsonpickle\.decode\s*\(
+            |\bnode-serialize\.unserialize\s*\(
+            |\bMarshal\.load\s*\(
+            """
+        ),
     ),
     (
         "CODE-DYNAMIC-EVAL",
         "high",
-        0.78,
+        0.80,
         "Dynamic code evaluation",
         "Dynamic evaluation can execute attacker-controlled input if the evaluated value is not fully trusted.",
         "Replace eval/exec with explicit parsing or a restricted mapping of supported operations.",
-        re.compile(r"(?i)\b(?:eval|exec)\s*\("),
+        re.compile(
+            r"""(?ix)
+            \b(?:eval|exec)\s*\(
+            |new\s+Function\s*\(
+            |vm\.(?:runInContext|runInNewContext|runInThisContext)\s*\(
+            |compile\s*\([^)\n]*,\s*["'][^"']*["']\s*,\s*["'](?:exec|eval)["']
+            |assert\s*\(\s*\$_(?:GET|POST|REQUEST)
+            |preg_replace\s*\([^)\n]*\/e["']
+            """
+        ),
     ),
     (
         "TLS-VERIFY-DISABLED",
         "high",
-        0.91,
+        0.92,
         "TLS certificate verification disabled",
         "The client appears to skip TLS certificate validation, enabling interception of network traffic.",
         "Enable certificate verification and configure a trusted CA instead of disabling TLS checks.",
-        re.compile(r"(?i)\bverify\s*=\s*False\b|rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['\"]0"),
+        re.compile(
+            r"""(?ix)
+            \bverify\s*=\s*False\b
+            |\brejectUnauthorized\s*:\s*false\b
+            |NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['"]0
+            |\bssl_verify\s*=\s*False\b
+            |\bInsecureRequestWarning\b
+            |CURLOPT_SSL_VERIFYPEER\s*,\s*(?:false|0)
+            |CURLOPT_SSL_VERIFYHOST\s*,\s*(?:false|0)
+            |InsecureSkipVerify\s*:\s*true\b
+            |TrustAllStrategy\b
+            """
+        ),
     ),
     (
         "HARDCODED-CREDENTIAL",
         "high",
-        0.76,
+        0.78,
         "Possible hardcoded credential",
         "A credential-like setting appears to be assigned a literal value in source code.",
         "Load credentials from a secret manager or environment configuration and rotate any exposed credential.",
         re.compile(
             r"""(?ix)
-            \b(?:api[_-]?key|client[_-]?secret|password|passwd|secret|access[_-]?token|auth[_-]?token)\b
-            \s*[:=]\s*["'][^"']{8,}["']
+            \b(?:api[_-]?key|client[_-]?secret|password|passwd|secret|access[_-]?token|auth[_-]?token|jwt[_-]?secret)\b
+            \s*[:=]\s*["'][^"'\s]{8,}["']
+            """
+        ),
+    ),
+    (
+        "HARDCODED-API-TOKEN",
+        "critical",
+        0.95,
+        "Exposed high-entropy API token or private key",
+        "A well-known service token pattern (AWS key, GitHub token, Slack token, Stripe key, Google key, or Private Key) was detected.",
+        "Immediately revoke and rotate the exposed token and purge it from source code history.",
+        re.compile(
+            r"""(?x)
+            \bAKIA[0-9A-Z]{16}\b
+            |\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}\b
+            |\bxox[baprs]-[0-9a-zA-Z]{10,}\b
+            |\b[rs]k_live_[0-9a-zA-Z]{24,}\b
+            |\bAIza[0-9A-Za-z\-_]{30,40}\b
+            |-----BEGIN\s+(?:RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE\s+KEY-----
+            """
+        ),
+    ),
+    (
+        "HARDCODED-DATABASE-URI",
+        "high",
+        0.90,
+        "Hardcoded database connection string with credentials",
+        "A database connection URI containing plaintext user credentials was detected in source code.",
+        "Inject database connection strings via environment variables or IAM service account authentication.",
+        re.compile(
+            r"""(?ix)
+            \b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[a-zA-Z0-9_\-\.]+:[^@\s"']+@[a-zA-Z0-9_\-\.]+
             """
         ),
     ),
     (
         "WEB-UNSAFE-HTML",
         "medium",
-        0.72,
-        "Potential unsafe HTML insertion",
+        0.75,
+        "Potential unsafe HTML insertion or DOM XSS",
         "HTML is inserted through a DOM API that does not escape content automatically.",
         "Escape or sanitize untrusted content, or use safe text APIs such as textContent.",
-        re.compile(r"(?i)\.innerHTML\s*=|dangerouslySetInnerHTML\s*="),
+        re.compile(
+            r"""(?ix)
+            \.(?:innerHTML|outerHTML)\s*=
+            |dangerouslySetInnerHTML\s*=
+            |document\.(?:write|writeln)\s*\(
+            |\.insertAdjacentHTML\s*\(
+            |v-html\s*=
+            |bypassSecurityTrustHtml\s*\(
+            |bypassSecurityTrustScript\s*\(
+            |mark_safe\s*\(
+            |\{\%\s*autoescape\s+off\s*\%\}
+            |echo\s+\$_(?:GET|POST|REQUEST)\[
+            """
+        ),
     ),
     (
         "SSRF-DYNAMIC-URL",
         "medium",
-        0.67,
+        0.72,
         "Possible server-side request forgery",
         "An outbound request may use a dynamically controlled URL. Untrusted destinations can expose internal services.",
         "Allowlist destinations and reject private, loopback, and link-local addresses after DNS resolution.",
         re.compile(
-            r"(?i)(?:requests\.(?:get|post|put|delete)|httpx\.(?:get|post)|fetch)\s*\(\s*(?:request\.(?:args|query_params|json)|req\.(?:query|body)|user_url)"
+            r"""(?ix)
+            (?:requests\.(?:get|post|put|delete|patch|head)|httpx\.(?:get|post|put|delete|patch)|fetch|axios\.(?:get|post))\s*\(\s*(?:request\.|req\.|user_url|target_url|dest_url|endpoint_url|webhook_url|remote_url|url\b)
+            |urllib\.request\.urlopen\s*\(\s*(?:request\.|req\.|user_url|target|dest|endpoint|url\b)
+            |curl_exec\s*\(\s*\$
+            """
+        ),
+    ),
+    (
+        "PATH-TRAVERSAL",
+        "high",
+        0.85,
+        "Potential path traversal or arbitrary file access",
+        "File operations use unvalidated path components, potentially enabling directory traversal (../) to read or write sensitive files.",
+        "Validate paths against an allowlist and resolve canonical paths to ensure they remain inside the intended directory.",
+        re.compile(
+            r"""(?ix)
+            (?:open|send_file|send_from_directory|file_get_contents|readfile)\s*\(\s*(?:request\.|req\.|user_path|filename|filepath|f["'][^"']*(?:\{user|\{path|\{file))
+            |fs\.(?:readFile|readFileSync|createReadStream|writeFile|writeFileSync)\s*\(\s*(?:req\.|request\.|path\.join\([^)\n]*req\.)
+            |(?:include|require)(?:_once)?\s*\(\s*\$_(?:GET|POST|REQUEST)
+            """
+        ),
+    ),
+    (
+        "TEMPLATE-INJECTION-SSTI",
+        "high",
+        0.86,
+        "Server-side template injection (SSTI)",
+        "Template strings are dynamically created with untrusted inputs rather than passing data as structured context variables.",
+        "Never concatenate untrusted input into template strings. Use parameterized template context rendering.",
+        re.compile(
+            r"""(?ix)
+            render_template_string\s*\(
+            |jinja2\.Template\s*\([^)\n]*(?:request\.|req\.|f["']|["'][^"']*["']\s*\+)
+            |mako\.template\.Template\s*\(
+            |ejs\.render\s*\(\s*(?:req\.|request\.)
+            |nunjucks\.renderString\s*\(\s*(?:req\.|request\.)
+            |Handlebars\.compile\s*\(\s*(?:req\.|request\.)
+            """
+        ),
+    ),
+    (
+        "WEAK-CRYPTOGRAPHY",
+        "medium",
+        0.85,
+        "Use of broken or obsolete cryptographic algorithm",
+        "The application employs weak cryptographic algorithms (MD5, SHA-1, DES, RC4, or ECB mode) susceptible to collision and cryptanalysis.",
+        "Use SHA-256/SHA-3 for cryptographic hashing, Argon2id/bcrypt for passwords, and AES-GCM for encryption.",
+        re.compile(
+            r"""(?ix)
+            hashlib\.(?:md5|sha1)\s*\(
+            |crypto\.createHash\s*\(\s*["'](?:md5|sha1)["']\)
+            |Cipher\.getInstance\s*\(\s*["'](?:DES|RC4|Blowfish|AES/ECB)
+            |AES\.MODE_ECB\b
+            |DES\.new\s*\(
+            |ARC4\.new\s*\(
+            """
+        ),
+    ),
+    (
+        "INSECURE-RANDOM",
+        "low",
+        0.75,
+        "Insecure pseudo-random number generator in security context",
+        "Standard PRNGs (random, Math.random) are predictable and should not be used to generate security tokens, keys, or passwords.",
+        "Use cryptographically secure random number generators (secrets module in Python, crypto.getRandomValues in JS).",
+        re.compile(
+            r"""(?ix)
+            \b[a-zA-Z0-9_]*(?:token|secret|password|passwd|nonce|auth_code|salt)[a-zA-Z0-9_]*\b\s*[:=]\s*[^;\n]*(?:random\.(?:random|randint|choice)|Math\.random)\s*\(
+            |["'][a-zA-Z0-9_]*(?:token|secret|password|nonce)[a-zA-Z0-9_]*["']\s*:\s*[^,\n]*(?:random\.(?:random|randint|choice)|Math\.random)\s*\(
+            """
+        ),
+    ),
+    (
+        "INSECURE-JWT",
+        "high",
+        0.90,
+        "Insecure JWT verification or 'none' algorithm accepted",
+        "JWT verification is disabled or accepts the 'none' algorithm, allowing attackers to forge forged administrative tokens.",
+        "Enforce signature verification and restrict allowed algorithms to secure asymmetric/symmetric schemes (RS256, HS256).",
+        re.compile(
+            r"""(?ix)
+            jwt\.decode\s*\([^)\n]*(?:verify\s*=\s*False|verify_signature\s*[:=]\s*False)
+            |algorithms\s*=\s*\[\s*["']none["']\s*\]
+            |algorithm\s*=\s*["']none["']
+            |options\s*=\s*\{[^}]*["']verify_signature["']\s*:\s*False
+            """
+        ),
+    ),
+    (
+        "XML-EXTERNAL-ENTITY-XXE",
+        "high",
+        0.85,
+        "XML External Entity (XXE) injection",
+        "XML parser is configured to parse external entities or DTDs, enabling local file disclosure and SSRF attacks.",
+        "Disable external entity resolution and DTD processing in all XML parsers.",
+        re.compile(
+            r"""(?ix)
+            resolve_entities\s*=\s*True\b
+            |etree\.XMLParser\s*\([^)\n]*resolve_entities\s*=\s*True
+            |libxml_disable_entity_loader\s*\(\s*false\s*\)
+            |setFeature\s*\(\s*["'][^"']*disallow-doctype-decl["']\s*,\s*false\s*\)
+            """
+        ),
+    ),
+    (
+        "INSECURE-CORS",
+        "medium",
+        0.80,
+        "Permissive CORS wildcard with credentials enabled",
+        "Configuring CORS with allow_origins=['*'] alongside allow_credentials=True allows arbitrary websites to read authenticated user data.",
+        "Specify explicit allowed origin domains rather than wildcard '*' when credentials are required.",
+        re.compile(
+            r"""(?ix)
+            allow_origins\s*=\s*\[\s*["']\*["']\s*\]\s*,\s*allow_credentials\s*=\s*True
+            |allow_credentials\s*=\s*True\s*,\s*allow_origins\s*=\s*\[\s*["']\*["']\s*\]
+            |cors\s*\(\s*\{[^}]*origin\s*:\s*["']\*["'][^}]*credentials\s*:\s*true
+            |res\.header\s*\(\s*["']Access-Control-Allow-Origin["']\s*,\s*["']\*["']\s*\)
+            """
+        ),
+    ),
+    (
+        "DEBUG-MODE-ENABLED",
+        "medium",
+        0.85,
+        "Production debug mode enabled",
+        "Application debug mode is enabled, which exposes interactive debugging consoles and detailed stack traces.",
+        "Ensure debug flags are disabled in production and controlled exclusively via environment configuration.",
+        re.compile(
+            r"""(?ix)
+            \bapp\.run\s*\([^)\n]*\bdebug\s*=\s*True
+            |\bDEBUG\s*=\s*True\b
+            |\bFLASK_DEBUG\s*=\s*["']?1["']?
+            |NODE_ENV\s*=\s*["']development["']
+            """
+        ),
+    ),
+    (
+        "OPEN-REDIRECT",
+        "medium",
+        0.75,
+        "Potential unvalidated open redirect",
+        "The application redirects users to a target specified directly in request parameters without domain validation.",
+        "Validate redirect targets against an allowlist of relative URLs or trusted internal domains before issuing redirect.",
+        re.compile(
+            r"""(?ix)
+            (?:redirect|res\.redirect)\s*\(\s*(?:request\.(?:args|values|GET|POST)|req\.(?:query|body))(?:\.(?:get\s*\(\s*|\[\s*)?["'](?:url|target|next|redirect|redirect_url|return|return_to|returnTo|dest|callback)["']|\.(?:url|target|next|redirect|redirect_url|returnTo|return_to|dest|callback)\b)
+            |header\s*\(\s*["']Location:\s*["']\s*\.\s*\$_(?:GET|POST|REQUEST)\[["'](?:url|target|next|redirect)
+            """
+        ),
+    ),
+    (
+        "PROTOTYPE-POLLUTION",
+        "high",
+        0.82,
+        "Potential JavaScript prototype pollution",
+        "Merging or assigning untrusted input objects into object prototypes allows modification of Object.prototype.",
+        "Validate keys against __proto__ and constructor, freeze prototypes, or use Map / Object.create(null).",
+        re.compile(
+            r"""(?ix)
+            \b(?:__proto__|constructor\s*\[\s*["']prototype["']\])
+            |Object\.assign\s*\([^,\n]*,\s*(?:req\.body|request\.body|JSON\.parse)
+            |lodash\.merge\s*\([^,\n]*,\s*(?:req\.body|request\.body)
+            """
+        ),
+    ),
+    (
+        "INSECURE-PERMISSIONS-OR-TEMP",
+        "medium",
+        0.80,
+        "Insecure file permissions or unsafe temporary file creation",
+        "World-writable permissions (0777) or deprecated mktemp allow local symlink attacks and unauthorized file tampering.",
+        "Use tempfile.NamedTemporaryFile / mkstemp and restrict permissions to minimum necessary privileges (0600 / 0700).",
+        re.compile(
+            r"""(?ix)
+            \btempfile\.mktemp\s*\(
+            |\bos\.chmod\s*\([^,\n]*,\s*0o?777\)
+            |\bchmodSync\s*\([^,\n]*,\s*0o?777\)
+            """
+        ),
+    ),
+    (
+        "NOSQL-INJECTION",
+        "high",
+        0.80,
+        "Potential NoSQL injection",
+        "Unsanitized request body or query parameters are passed directly into NoSQL/MongoDB evaluation operators ($where, etc.).",
+        "Sanitize inputs, avoid JavaScript execution in NoSQL queries, and enforce schema validation.",
+        re.compile(
+            r"""(?ix)
+            \bfind(?:One)?\s*\(\s*\{[^}]*["']?\$where["']?\s*:
+            |["']?\$where["']?\s*:\s*["'][^"']*\+
+            |db\.[a-zA-Z_0-9]+\.(?:find|findOne|update|delete|deleteMany|updateOne)\s*\(\s*(?:req\.body|request\.json)
+            """
+        ),
+    ),
+    (
+        "LDAP-INJECTION",
+        "high",
+        0.82,
+        "Potential LDAP injection",
+        "LDAP search filter queries are constructed with string formatting or concatenation with dynamic user input.",
+        "Sanitize LDAP filter parameters with ldap.filter.escape_filter_chars() or use parameterized search helpers.",
+        re.compile(
+            r"""(?ix)
+            ldap(?:\d)?\.(?:search|search_s|search_ext)\s*\([^)\n]*["'][^"']*=\s*["']\s*[\+\%]
+            |ldap(?:\d)?\.(?:search|search_s|search_ext)\s*\([^)\n]*f["'][^"']*=[{]
+            """
+        ),
+    ),
+    (
+        "REDOS-UNTRUSTED-REGEX",
+        "medium",
+        0.75,
+        "Dynamic regular expression evaluation from untrusted input",
+        "Constructing regular expressions from user input can cause catastrophic backtracking and denial of service (ReDoS).",
+        "Avoid compiling dynamic regular expressions from untrusted input, or use non-backtracking engines like re2.",
+        re.compile(
+            r"""(?ix)
+            new\s+RegExp\s*\(\s*(?:req\.|request\.|userInput|user_input|input)
+            |re\.compile\s*\(\s*(?:request\.|req\.|user_input|userInput)
+            """
+        ),
+    ),
+    (
+        "INSECURE-COOKIE",
+        "low",
+        0.75,
+        "Insecure cookie configuration",
+        "Cookie is set with HttpOnly or Secure flags disabled, exposing session tokens to script injection or network interception.",
+        "Always set HttpOnly=True, Secure=True, and SameSite='Lax' or 'Strict' on sensitive cookies.",
+        re.compile(
+            r"""(?ix)
+            set_cookie\s*\([^)\n]*\bhttponly\s*=\s*False
+            |set_cookie\s*\([^)\n]*\bsecure\s*=\s*False
+            |cookie\s*:\s*\{[^}]*secure\s*:\s*false
+            |cookie\s*:\s*\{[^}]*httpOnly\s*:\s*false
+            """
+        ),
+    ),
+    (
+        "CODE-BROKEN-AUTHENTICATION",
+        "high",
+        0.88,
+        "Broken authentication check or bypass condition",
+        "Authentication check functions contain hardcoded True return values or unconditional bypasses.",
+        "Enforce cryptographic signature and password verification and eliminate hardcoded authentication bypass branches.",
+        re.compile(
+            r"""(?ix)
+            def\s+is_authenticated\s*\([^)\n]*\)\s*:\s*return\s+True
+            |def\s+check_password\s*\([^)\n]*\)\s*:\s*return\s+True
+            |if\s+password\s*==\s*["'][^"']*["']\s*or\s+True\b
+            """
         ),
     ),
 )
@@ -127,7 +483,9 @@ def is_security_scan_candidate(path: str) -> bool:
     if PurePosixPath(normalized).suffix.casefold() not in SOURCE_EXTENSIONS:
         return False
     filename = PurePosixPath(normalized).name.casefold()
-    return not (filename.endswith(".min.js") or filename.endswith(".min.css"))
+    if filename in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "gemfile.lock"):
+        return False
+    return not (filename.endswith(".min.js") or filename.endswith(".min.css") or filename.endswith(".map"))
 
 
 def scan_security_files(
@@ -204,12 +562,18 @@ async def scan_github_repository(
         and isinstance(item.get("path"), str)
         and is_security_scan_candidate(item["path"])
     ]
-    paths_to_scan = candidate_paths[:MAX_SECURITY_SCAN_FILES]
     changed_paths = {
         _normalize_path(str(file_info.get("filename", "")))
         for file_info in changed_files
         if file_info.get("filename")
     }
+
+    # Prioritize deployment changed paths first, then stable repository files
+    prioritized_paths = sorted(
+        candidate_paths,
+        key=lambda p: (0 if _normalize_path(p) in changed_paths else 1, p)
+    )
+    paths_to_scan = prioritized_paths[:MAX_SECURITY_SCAN_FILES]
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_FILE_REQUESTS)
     failed_files = 0
