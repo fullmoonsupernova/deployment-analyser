@@ -466,6 +466,146 @@ RULES = (
             """
         ),
     ),
+    (
+        "ZIP-SLIP-TRAVERSAL",
+        "high",
+        0.85,
+        "Potential Zip Slip archive path traversal",
+        "Archive extraction operations (tarfile/zipfile extractall) without member path validation can overwrite arbitrary system files.",
+        "Inspect archive member paths, ensure they are relative, and verify with Path.resolve() that they stay within the target directory.",
+        re.compile(r"""(?ix)\b(?:tarfile|zipfile|tar|zip_ref|zipArchive|archive)\.(?:extractall|extract)\s*\("""),
+    ),
+    (
+        "TIMING-ATTACK-EQUALITY",
+        "medium",
+        0.78,
+        "Potential timing attack on cryptographic secret",
+        "Comparing cryptographic hashes, signatures, tokens, or MACs using standard equality operators leaks timing information.",
+        "Use constant-time comparison functions such as hmac.compare_digest() in Python or crypto.timingSafeEqual() in Node.js.",
+        re.compile(
+            r"""(?ix)
+            (?:signature|hmac|hash|digest|auth_tag|mac)\s*(?:===?|!==?)\s*[a-zA-Z0-9_]
+            |[a-zA-Z0-9_]+\s*(?:===?|!==?)\s*(?:signature|hmac|hash|digest|auth_tag|mac)\b
+            """
+        ),
+    ),
+    (
+        "MASS-ASSIGNMENT",
+        "high",
+        0.80,
+        "Potential mass assignment or parameter tampering",
+        "Binding raw client request parameters directly to database model creation or update methods allows unauthorized parameter tampering.",
+        "Use an explicit allowlist of permitted fields (e.g., Pydantic schema validation or explicit field mapping) before persisting.",
+        re.compile(
+            r"""(?ix)
+            \b(?:objects\.create|create|update|update_attributes)\s*\(\s*\*\*(?:request\.(?:POST|GET|json|data)|req\.body)
+            |\bparams\.permit!\b
+            |\b[A-Z][a-zA-Z0-9_]*\.(?:create|update)\s*\(\s*(?:req\.body|request\.json)\s*\)
+            """
+        ),
+    ),
+    (
+        "SENSITIVE-DATA-LOGGING",
+        "medium",
+        0.76,
+        "Sensitive data exposure in application logs",
+        "Writing credentials, passwords, auth tokens, or API secrets into logs exposes them to centralized log monitoring tools.",
+        "Sanitize log outputs, redact sensitive keys, or use structured log filtering.",
+        re.compile(
+            r"""(?ix)
+            (?:logging\.(?:debug|info|warning|error)|logger\.(?:debug|info|warning|error)|console\.(?:log|error|warn))\s*\([^)\n]*(?:password|passwd|api[_-]?key|client[_-]?secret|access[_-]?token|bearer[_-]?token|auth[_-]?header)
+            """
+        ),
+    ),
+    (
+        "DANGEROUS-FILE-UPLOAD",
+        "high",
+        0.82,
+        "Insecure file upload path construction",
+        "Saving uploaded files directly with user-supplied filenames can allow path traversal or executable script uploads.",
+        "Sanitize uploaded filenames with werkzeug.utils.secure_filename(), generate randomized storage keys (UUIDs), and validate MIME types.",
+        re.compile(
+            r"""(?ix)
+            \bfile\.save\s*\([^)\n]*file\.filename
+            |\breq\.files\.[a-zA-Z0-9_]+\.mv\s*\(
+            |\b(?:upload|uploads)\s*\.\s*save\s*\([^)\n]*filename
+            """
+        ),
+    ),
+    (
+        "CSRF-PROTECTION-DISABLED",
+        "medium",
+        0.84,
+        "Cross-Site Request Forgery (CSRF) protection disabled",
+        "Disabling CSRF middleware on state-changing endpoints allows third-party websites to forge requests on behalf of authenticated users.",
+        "Keep CSRF validation enabled on all browser-facing state-changing endpoints, using Anti-CSRF tokens or SameSite cookie policies.",
+        re.compile(
+            r"""(?ix)
+            @(?:csrf_exempt|csrf\.exempt)\b
+            |csrf\s*:\s*false\b
+            |WTF_CSRF_ENABLED\s*=\s*False\b
+            """
+        ),
+    ),
+    (
+        "GRAPHQL-UNBOUNDED-OR-INTROSPECTION",
+        "low",
+        0.75,
+        "GraphQL schema introspection or unbounded query depth",
+        "Enabling schema introspection in production leaks backend APIs, while missing query depth limits enables resource exhaustion.",
+        "Disable GraphQL introspection in production and enforce query depth/complexity limits with validation rules.",
+        re.compile(
+            r"""(?ix)
+            \bintrospection\s*[:=]\s*True\b
+            |\bintrospection\s*:\s*true\b
+            |\bvalidation_rules\s*=\s*\[\s*\]
+            """
+        ),
+    ),
+    (
+        "STATIC-CRYPTO-IV-OR-SALT",
+        "medium",
+        0.82,
+        "Static or hardcoded cryptographic IV or salt",
+        "Reusing static initialization vectors (IVs) or fixed salts undermines cipher security and allows dictionary attacks against hashes.",
+        "Generate unique, cryptographically random IVs (os.urandom(16)) and random salts for every encryption and hashing operation.",
+        re.compile(
+            r"""(?ix)
+            \b(?:iv|initialization_vector)\s*=\s*(?:b["']0{8,}["']|b["']\\x00{8,}["']|["']0{8,}["'])
+            |\bsalt\s*=\s*b?["'][a-zA-Z0-9_\-]{1,16}["']\b
+            """
+        ),
+    ),
+    (
+        "UNSAFE-C-MEM-FUNCTION",
+        "high",
+        0.86,
+        "Unsafe C/C++ memory operation (Buffer Overflow risk)",
+        "Legacy C memory and string manipulation functions without explicit length bounds are susceptible to buffer overflows.",
+        "Replace legacy functions with bounded alternatives: use strncpy_s / snprintf / fgets instead of strcpy, gets, and sprintf.",
+        re.compile(
+            r"""(?ix)
+            \b(?:strcpy|strcat|sprintf|vsprintf)\s*\([^)\n]*,
+            |\bgets\s*\(
+            |\bscanf\s*\(\s*["']%s["']
+            """
+        ),
+    ),
+    (
+        "SENSITIVE-EXCEPTION-LEAK",
+        "medium",
+        0.75,
+        "Raw exception details or stack trace exposed in response",
+        "Returning raw exception objects or stack traces directly in API responses leaks system architecture and file paths.",
+        "Log detailed exceptions internally and return generic, user-friendly error codes or messages to clients.",
+        re.compile(
+            r"""(?ix)
+            res\.status\s*\(\s*500\s*\)\.send\s*\(\s*err(?:\.stack)?\s*\)
+            |res\.(?:json|send)\s*\(\s*\{\s*error\s*:\s*err(?:\.message|\.stack)?\s*\}
+            |return\s+(?:jsonify\s*\(\s*)?\{[^}]*["']error["']\s*:\s*str\s*\(\s*e\s*\)
+            """
+        ),
+    ),
 )
 
 

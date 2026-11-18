@@ -376,6 +376,36 @@ def test_comprehensive_vulnerability_pattern_detection():
         # CODE-BROKEN-AUTHENTICATION
         ('def is_authenticated(user): return True', "CODE-BROKEN-AUTHENTICATION"),
         ('if password == "" or True:', "CODE-BROKEN-AUTHENTICATION"),
+
+        # ZIP-SLIP-TRAVERSAL
+        ('tarfile.extractall("/tmp/dest")', "ZIP-SLIP-TRAVERSAL"),
+
+        # TIMING-ATTACK-EQUALITY
+        ('if user_signature == expected_signature:', "TIMING-ATTACK-EQUALITY"),
+
+        # MASS-ASSIGNMENT
+        ('User.objects.create(**request.POST.dict())', "MASS-ASSIGNMENT"),
+
+        # SENSITIVE-DATA-LOGGING
+        ('logging.info(f"User login attempt with password: {password}")', "SENSITIVE-DATA-LOGGING"),
+
+        # DANGEROUS-FILE-UPLOAD
+        ('file.save(os.path.join(UPLOAD_FOLDER, file.filename))', "DANGEROUS-FILE-UPLOAD"),
+
+        # CSRF-PROTECTION-DISABLED
+        ('@csrf_exempt\ndef transfer():', "CSRF-PROTECTION-DISABLED"),
+
+        # GRAPHQL-UNBOUNDED-OR-INTROSPECTION
+        ('schema = GraphQLSchema(query=Query, introspection=True)', "GRAPHQL-UNBOUNDED-OR-INTROSPECTION"),
+
+        # STATIC-CRYPTO-IV-OR-SALT
+        ('iv = b"0000000000000000"', "STATIC-CRYPTO-IV-OR-SALT"),
+
+        # UNSAFE-C-MEM-FUNCTION
+        ('strcpy(dest, src);', "UNSAFE-C-MEM-FUNCTION"),
+
+        # SENSITIVE-EXCEPTION-LEAK
+        ('res.status(500).send(err.stack)', "SENSITIVE-EXCEPTION-LEAK"),
     ]
 
     for code_snippet, expected_rule in samples:
